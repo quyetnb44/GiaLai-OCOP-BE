@@ -1,8 +1,10 @@
+# =========================
 # 1️⃣ Build stage
+# =========================
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy project file và restore
+# Copy project file và restore dependencies
 COPY ["GiaLaiOCOP.Api.csproj", "./"]
 RUN dotnet restore "GiaLaiOCOP.Api.csproj"
 
@@ -10,28 +12,30 @@ RUN dotnet restore "GiaLaiOCOP.Api.csproj"
 COPY . .
 RUN dotnet publish "GiaLaiOCOP.Api.csproj" -c Release -o /app
 
+# =========================
 # 2️⃣ Runtime stage
-# Chọn base image bookworm-slim thay vì bullseye
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim AS runtime
+# =========================
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-bullseye-slim AS runtime
 WORKDIR /app
 
-# Nếu cần globalization (ví dụ hiển thị ngày tháng, số), giữ FALSE
-ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
-
-# Cài libicu và các lib cần thiết khác
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        libicu72 \
+# Cài các thư viện cần thiết cho .NET runtime và System.Drawing.Common
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libicu70 \
         libssl3 \
         libkrb5-3 \
         libcurl4 \
         libgdiplus \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Nếu bạn muốn sử dụng Globalization (format ngày tháng, số, tiền tệ)
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
 # Copy app từ stage build
 COPY --from=build /app .
 
 # Mở port cho Render
 EXPOSE 5000
 
-# Start app
+# Start ứng dụng
 ENTRYPOINT ["dotnet", "GiaLaiOCOP.Api.dll"]
