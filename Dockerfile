@@ -15,11 +15,13 @@ RUN dotnet publish "GiaLaiOCOP.Api.csproj" -c Release -o /app/publish
 # =========================
 # 2️⃣ Runtime stage
 # =========================
-# Chọn image runtime chính thức tồn tại
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-bullseye AS runtime
 WORKDIR /app
 
-# Copy từ stage build
+# Cài thư viện cần thiết cho PostgreSQL
+RUN apt-get update && apt-get install -y libpq-dev && rm -rf /var/lib/apt/lists/*
+
+# Copy app từ stage build
 COPY --from=build /app/publish .
 
 # Mở port
