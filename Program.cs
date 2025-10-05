@@ -17,6 +17,16 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// 🔹 Cấu hình CORS để FE (Next.js) gọi API được
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("https://gialaai-ocop-frontend.onrender.com") // domain FE sau khi deploy
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
 
 var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
@@ -81,6 +91,9 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddScoped<ITokenService, TokenService>();
 
 var app = builder.Build();
+// 🔹 Bật CORS cho toàn bộ app
+app.UseCors("AllowFrontend");
+
 
 app.UseAuthentication();
 app.UseAuthorization();
