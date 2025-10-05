@@ -11,16 +11,16 @@ COPY . .
 RUN dotnet publish "GiaLaiOCOP.Api.csproj" -c Release -o /app
 
 # 2️⃣ Runtime stage
-# Chọn base image Bullseye để tránh lỗi libicu
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-bullseye AS runtime
+# Chọn base image bookworm-slim thay vì bullseye
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim AS runtime
 WORKDIR /app
 
 # Nếu cần globalization (ví dụ hiển thị ngày tháng, số), giữ FALSE
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
-# Cài đặt libicu phiên bản đúng với Debian Bullseye
+# Cài đặt libicu phiên bản đúng với Debian Bookworm
 RUN apt-get update \
-    && apt-get install -y libicu67 --no-install-recommends \
+    && apt-get install -y libicu72 --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy app từ stage build
