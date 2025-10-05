@@ -16,7 +16,8 @@ WORKDIR /app
 
 # Fix globalization nếu cần
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
-RUN apt-get update && apt-get install -y libc6 libicu67 --no-install-recommends && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libicu70 --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 
 # Copy output từ build stage
 COPY --from=build /app/publish .
