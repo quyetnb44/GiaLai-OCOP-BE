@@ -3,8 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy csproj + restore dependencies
-COPY ["GiaLaiOCOP.Api/GiaLaiOCOP.Api.csproj", "GiaLaiOCOP.Api/"]
-WORKDIR /src/GiaLaiOCOP.Api
+COPY ["GiaLaiOCOP.Api.csproj", "./"]
 RUN dotnet restore "GiaLaiOCOP.Api.csproj"
 
 # Copy toàn bộ code và publish
@@ -15,7 +14,7 @@ RUN dotnet publish "GiaLaiOCOP.Api.csproj" -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-# Fix globalization issue
+# Fix globalization nếu cần
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 RUN apt-get update && apt-get install -y libc6 libicu67 --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
