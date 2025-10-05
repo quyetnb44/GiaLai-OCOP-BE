@@ -3,18 +3,19 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy csproj + restore dependencies
-COPY *.csproj ./
-RUN dotnet restore "./GiaLaiOCOP.Api.csproj"
+COPY ["GiaLaiOCOP.Api/GiaLaiOCOP.Api.csproj", "GiaLaiOCOP.Api/"]
+WORKDIR /src/GiaLaiOCOP.Api
+RUN dotnet restore "GiaLaiOCOP.Api.csproj"
 
 # Copy toàn bộ code và publish
 COPY . .
-RUN dotnet publish "./GiaLaiOCOP.Api.csproj" -c Release -o /app/publish
+RUN dotnet publish "GiaLaiOCOP.Api.csproj" -c Release -o /app/publish
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-# Nếu gặp segfault do globalization
+# Fix globalization issue
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 RUN apt-get update && apt-get install -y libc6 libicu67 --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
