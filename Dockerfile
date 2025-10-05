@@ -18,11 +18,15 @@ WORKDIR /app
 # Nếu cần globalization (ví dụ hiển thị ngày tháng, số), giữ FALSE
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
-# Cài đặt libicu phiên bản đúng với Debian Bookworm
+# Cài libicu và các lib cần thiết khác
 RUN apt-get update \
-    && apt-get install -y libicu72 --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
+        libicu72 \
+        libssl3 \
+        libkrb5-3 \
+        libcurl4 \
+        libgdiplus \
     && rm -rf /var/lib/apt/lists/*
-
 # Copy app từ stage build
 COPY --from=build /app .
 
