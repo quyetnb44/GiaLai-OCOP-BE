@@ -9,5 +9,5 @@ public class Review
     public Product? Product { get; set; }
     public string Comment { get; set; } = string.Empty;
     public int Rating { get; set; } // 1-5
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

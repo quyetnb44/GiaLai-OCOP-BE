@@ -3,6 +3,7 @@ using System;
 using GiaLaiOCOP.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GiaLaiOCOP.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251009163524_AddProductNameNotNull")]
+    partial class AddProductNameNotNull
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,27 +24,6 @@ namespace GiaLaiOCOP.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("GiaLaiOCOP.Api.Models.Enterprise", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Enterprises");
-                });
 
             modelBuilder.Entity("GiaLaiOCOP.Api.Models.Location", b =>
                 {
@@ -163,9 +145,6 @@ namespace GiaLaiOCOP.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("EnterpriseId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -177,8 +156,6 @@ namespace GiaLaiOCOP.Api.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("EnterpriseId");
 
                     b.HasIndex("ProducerId");
 
@@ -261,9 +238,6 @@ namespace GiaLaiOCOP.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int?>("EnterpriseId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -277,8 +251,6 @@ namespace GiaLaiOCOP.Api.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("EnterpriseId");
 
                     b.ToTable("Users");
                 });
@@ -315,23 +287,15 @@ namespace GiaLaiOCOP.Api.Migrations
 
             modelBuilder.Entity("GiaLaiOCOP.Api.Models.Product", b =>
                 {
-                    b.HasOne("GiaLaiOCOP.Api.Models.Enterprise", "Enterprise")
-                        .WithMany("Products")
-                        .HasForeignKey("EnterpriseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("GiaLaiOCOP.Api.Models.Producer", null)
                         .WithMany("Products")
                         .HasForeignKey("ProducerId");
-
-                    b.Navigation("Enterprise");
                 });
 
             modelBuilder.Entity("GiaLaiOCOP.Api.Models.Review", b =>
                 {
                     b.HasOne("GiaLaiOCOP.Api.Models.Product", "Product")
-                        .WithMany("Reviews")
+                        .WithMany()
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -358,22 +322,6 @@ namespace GiaLaiOCOP.Api.Migrations
                     b.Navigation("Order");
                 });
 
-            modelBuilder.Entity("GiaLaiOCOP.Api.Models.User", b =>
-                {
-                    b.HasOne("GiaLaiOCOP.Api.Models.Enterprise", "Enterprise")
-                        .WithMany("Users")
-                        .HasForeignKey("EnterpriseId");
-
-                    b.Navigation("Enterprise");
-                });
-
-            modelBuilder.Entity("GiaLaiOCOP.Api.Models.Enterprise", b =>
-                {
-                    b.Navigation("Products");
-
-                    b.Navigation("Users");
-                });
-
             modelBuilder.Entity("GiaLaiOCOP.Api.Models.Order", b =>
                 {
                     b.Navigation("OrderItems");
@@ -387,8 +335,6 @@ namespace GiaLaiOCOP.Api.Migrations
             modelBuilder.Entity("GiaLaiOCOP.Api.Models.Product", b =>
                 {
                     b.Navigation("OrderItems");
-
-                    b.Navigation("Reviews");
                 });
 
             modelBuilder.Entity("GiaLaiOCOP.Api.Models.User", b =>

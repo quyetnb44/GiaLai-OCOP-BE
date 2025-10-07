@@ -1,12 +1,23 @@
-﻿namespace GiaLaiOCOP.Api.Models;
+﻿using System.Text.Json.Serialization;
 
-public class OrderItem
+namespace GiaLaiOCOP.Api.Models
 {
-    public int Id { get; set; }
-    public int OrderId { get; set; }
-    public Order? Order { get; set; }
-    public int ProductId { get; set; }
-    public Product? Product { get; set; }
-    public int Quantity { get; set; }
-    public decimal Price { get; set; }
+    public class OrderItem
+    {
+        public int Id { get; set; }
+
+        public int OrderId { get; set; }
+
+        [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON
+        public Order Order { get; set; }
+
+        public int ProductId { get; set; }
+
+        [JsonIgnore] // 🔥 Nếu Product có liên kết ngược đến OrderItem thì cũng nên bỏ qua
+        public Product Product { get; set; }
+
+        public int Quantity { get; set; }
+
+        public decimal Price { get; set; } // Giá tại thời điểm đặt
+    }
 }

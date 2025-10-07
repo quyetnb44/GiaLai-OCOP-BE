@@ -35,7 +35,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 Name = dto.Name,
                 Email = dto.Email,
                 Password = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-                Role = dto.Role
+                Role = "Customer"
             };
 
             _context.Users.Add(user);
