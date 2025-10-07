@@ -1,19 +1,18 @@
-# 1️⃣ Build stage
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
-WORKDIR /src
-COPY ["GiaLaiOCOP.Api.csproj", "./"]
-RUN dotnet restore "GiaLaiOCOP.Api.csproj"
-COPY . .
-RUN dotnet publish "GiaLaiOCOP.Api.csproj" -c Release -o /app/publish
+### Dockerfile
+# Dùng hình ảnh chính thức của .NET SDK để build ứng dụng
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /app
 
-# 2️⃣ Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+# Sao chép file csproj và restore dependencies
+COPY *.csproj ./
+RUN dotnet restore
+
+# Sao chép toàn bộ source code và build ứng dụng
+COPY . .
+RUN dotnet publish -c Release -o /app/publish
+
+# Dùng hình ảnh .NET Runtime để chạy ứng dụng
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
-
-# expose & bind port
-EXPOSE 5000
-ENV ASPNETCORE_URLS=http://+:5000
-ENV ASPNETCORE_Kestrel__Endpoints__Http__Url=http://0.0.0.0:5000
-
 ENTRYPOINT ["dotnet", "GiaLaiOCOP.Api.dll"]
