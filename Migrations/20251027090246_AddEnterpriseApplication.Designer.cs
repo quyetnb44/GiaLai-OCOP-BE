@@ -3,6 +3,7 @@ using System;
 using GiaLaiOCOP.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GiaLaiOCOP.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251027090246_AddEnterpriseApplication")]
+    partial class AddEnterpriseApplication
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -51,26 +54,7 @@ namespace GiaLaiOCOP.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("AdditionalNotes")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("Address")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("AdminComment")
-                        .HasColumnType("text");
-
-                    b.Property<string>("AttachedDocuments")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("BusinessField")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("BusinessLicenseNumber")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -81,7 +65,7 @@ namespace GiaLaiOCOP.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("District")
+                    b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -93,73 +77,7 @@ namespace GiaLaiOCOP.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("LicenseIssuedBy")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("LicenseIssuedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("NumberOfEmployees")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("PhoneNumber")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProductCategory")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProductCertifications")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProductDescription")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProductImages")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProductName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProductOrigin")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProductionLocation")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProductionScale")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Province")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("RepresentativeIdIssuedBy")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("RepresentativeIdIssuedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RepresentativeIdNumber")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("RepresentativeName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("RepresentativePosition")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -171,19 +89,8 @@ namespace GiaLaiOCOP.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<int>("UserId")
                         .HasColumnType("integer");
-
-                    b.Property<string>("Ward")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Website")
-                        .IsRequired()
-                        .HasColumnType("text");
 
                     b.HasKey("Id");
 

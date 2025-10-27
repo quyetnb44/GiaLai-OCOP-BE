@@ -18,6 +18,8 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<Transaction> Transactions { get; set; }
         public DbSet<Location> Locations { get; set; }
         public DbSet<Enterprise> Enterprises { get; set; }
+        public DbSet<EnterpriseApplication> EnterpriseApplications { get; set; }
+
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
