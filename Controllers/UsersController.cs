@@ -53,11 +53,15 @@ namespace GiaLaiOCOP.Api.Controllers
                                            .FirstOrDefaultAsync(u => u.Id == id);
             if (user == null) return NotFound();
 
-            var currentUserId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var currentUserEmail = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == currentUserEmail);
+            if (currentUser == null) return Forbid();
+
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (role != "SystemAdmin" && currentUserId != user.Id)
+            if (role != "SystemAdmin" && currentUser.Id != user.Id)
                 return Forbid();
+
 
             var userDto = new UserDto
             {
