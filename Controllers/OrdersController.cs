@@ -5,6 +5,7 @@ using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -16,61 +17,167 @@ namespace GiaLaiOCOP.Api.Controllers
         private readonly AppDbContext _context;
         public OrdersController(AppDbContext context) => _context = context;
 
+        // Helper method để lấy userId từ token
+        private async Task<int?> GetUserIdFromTokenAsync()
+        {
+            // 🔹 Thử lấy từ ClaimTypes.NameIdentifier trước (userId dạng string)
+            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (string.IsNullOrWhiteSpace(claimValue))
+                return null;
+
+            // 🔹 Nếu claim là số (userId), parse trực tiếp
+            if (int.TryParse(claimValue, out var userId))
+                return userId;
+
+            // 🔹 Nếu claim là email, tìm user từ database
+            if (claimValue.Contains("@"))
+            {
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == claimValue);
+                return user?.Id;
+            }
+
+            return null;
+        }
+
         // GET /api/orders
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Order>>> GetOrders()
+        public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrders()
         {
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
-            // ✅ Check claim an toàn
-            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
-                return BadRequest("Invalid user id in token.");
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            IQueryable<Order> query;
 
             if (role == "Customer")
             {
-                // Customer chỉ xem đơn của chính mình
-                return await _context.Orders
+                query = _context.Orders
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
-                    .Where(o => o.UserId == userId)
-                    .ToListAsync();
+                    .Where(o => o.UserId == userId.Value);
             }
             else if (role == "EnterpriseAdmin")
             {
-                var enterpriseId = (await _context.Users.FindAsync(userId))?.EnterpriseId ?? 0;
-                return await _context.Orders
+                var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
+                query = _context.Orders
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
-                    .Where(o => o.OrderItems.Any(oi => oi.Product.EnterpriseId == enterpriseId))
-                    .ToListAsync();
+                    .Where(o => o.OrderItems.Any(oi => oi.Product.EnterpriseId == enterpriseId));
             }
             else if (role == "SystemAdmin")
             {
-                // SystemAdmin xem tất cả
-                return await _context.Orders
-                    .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
-                    .ToListAsync();
+                query = _context.Orders
+                    .Include(o => o.OrderItems).ThenInclude(oi => oi.Product);
+            }
+            else
+            {
+                return Forbid();
             }
 
-            return Forbid();
+            var orders = await query.ToListAsync();
+            
+            // Map sang DTOs
+            var orderDtos = orders.Select(o => new OrderDto
+            {
+                Id = o.Id,
+                UserId = o.UserId,
+                OrderDate = o.OrderDate,
+                ShippingAddress = o.ShippingAddress,
+                TotalAmount = o.TotalAmount,
+                Status = o.Status,
+                OrderItems = o.OrderItems.Select(oi => new OrderItemDto
+                {
+                    Id = oi.Id,
+                    OrderId = oi.OrderId,
+                    ProductId = oi.ProductId,
+                    Quantity = oi.Quantity,
+                    Price = oi.Price
+                }).ToList()
+            });
+
+            return Ok(orderDtos);
         }
 
-        // POST /api/orders (chỉ Customer)
+        // 🔹 GET /api/orders/{id} - Xem chi tiết 1 đơn hàng
+        [HttpGet("{id}")]
+        public async Task<ActionResult<OrderDto>> GetOrder(int id)
+        {
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var order = await _context.Orders
+                .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null) return NotFound("Không tìm thấy đơn hàng.");
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            // 🔹 Kiểm tra quyền truy cập
+            if (role == "Customer")
+            {
+                if (order.UserId != userId.Value)
+                    return Forbid("Bạn chỉ có thể xem đơn hàng của chính mình.");
+            }
+            else if (role == "EnterpriseAdmin")
+            {
+                var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
+                if (!order.OrderItems.Any(oi => oi.Product.EnterpriseId == enterpriseId))
+                    return Forbid("Bạn chỉ có thể xem đơn hàng có sản phẩm của doanh nghiệp mình.");
+            }
+            // SystemAdmin có thể xem tất cả, không cần check
+
+            var orderDto = new OrderDto
+            {
+                Id = order.Id,
+                UserId = order.UserId,
+                OrderDate = order.OrderDate,
+                ShippingAddress = order.ShippingAddress,
+                TotalAmount = order.TotalAmount,
+                Status = order.Status,
+                OrderItems = order.OrderItems.Select(oi => new OrderItemDto
+                {
+                    Id = oi.Id,
+                    OrderId = oi.OrderId,
+                    ProductId = oi.ProductId,
+                    Quantity = oi.Quantity,
+                    Price = oi.Price
+                }).ToList()
+            };
+
+            return Ok(orderDto);
+        }
+
+        // POST /api/orders - Tạo đơn hàng mới (chỉ Customer)
         [Authorize(Roles = "Customer")]
         [HttpPost]
-        public async Task<ActionResult<Order>> CreateOrder(CreateOrderDto dto)
+        public async Task<ActionResult<OrderDto>> CreateOrder(CreateOrderDto dto)
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
-            // ✅ Check claim an toàn
-            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
-                return BadRequest("Invalid user id in token.");
-
+            // 🔹 Validation: ShippingAddress
             if (string.IsNullOrEmpty(dto.ShippingAddress))
-                return BadRequest("ShippingAddress is required.");
+                return BadRequest("Địa chỉ giao hàng là bắt buộc.");
+
+            // 🔹 Validation: Items không rỗng
+            if (dto.Items == null || dto.Items.Count == 0)
+                return BadRequest("Đơn hàng phải có ít nhất 1 sản phẩm.");
+
+            // 🔹 Validation: Quantity > 0 cho mỗi item
+            foreach (var item in dto.Items)
+            {
+                if (item.Quantity <= 0)
+                    return BadRequest($"Số lượng sản phẩm ID {item.ProductId} phải lớn hơn 0.");
+            }
 
             var order = new Order
             {
-                UserId = userId,
+                UserId = userId.Value,
                 ShippingAddress = dto.ShippingAddress,
                 OrderDate = DateTime.UtcNow,
                 Status = "Pending"
@@ -83,14 +190,15 @@ namespace GiaLaiOCOP.Api.Controllers
             foreach (var item in dto.Items)
             {
                 var product = await _context.Products.FindAsync(item.ProductId);
-                if (product == null) return BadRequest($"Sản phẩm ID {item.ProductId} không tồn tại.");
+                if (product == null)
+                    return BadRequest($"Sản phẩm ID {item.ProductId} không tồn tại.");
 
                 var orderItem = new OrderItem
                 {
                     OrderId = order.Id,
                     ProductId = item.ProductId,
                     Quantity = item.Quantity,
-                    Price = product.Price
+                    Price = product.Price // 🔹 Lưu giá tại thời điểm đặt hàng
                 };
                 total += product.Price * item.Quantity;
                 _context.OrderItems.Add(orderItem);
@@ -99,7 +207,109 @@ namespace GiaLaiOCOP.Api.Controllers
             order.TotalAmount = total;
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetOrders), new { id = order.Id }, order);
+            // 🔹 Reload để lấy OrderItems đã lưu
+            await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
+
+            // Map sang DTO
+            var orderDto = new OrderDto
+            {
+                Id = order.Id,
+                UserId = order.UserId,
+                OrderDate = order.OrderDate,
+                ShippingAddress = order.ShippingAddress,
+                TotalAmount = order.TotalAmount,
+                Status = order.Status,
+                OrderItems = order.OrderItems.Select(oi => new OrderItemDto
+                {
+                    Id = oi.Id,
+                    OrderId = oi.OrderId,
+                    ProductId = oi.ProductId,
+                    Quantity = oi.Quantity,
+                    Price = oi.Price
+                }).ToList()
+            };
+
+            return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, orderDto);
         }
+
+        // 🔹 PUT /api/orders/{id}/status - Cập nhật trạng thái đơn hàng
+        [HttpPut("{id}/status")]
+        public async Task<IActionResult> UpdateOrderStatus(int id, [FromBody] UpdateOrderStatusDto dto)
+        {
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            // 🔹 Validation: Status hợp lệ
+            if (dto.Status != "Pending" && dto.Status != "Completed" && dto.Status != "Cancelled")
+                return BadRequest("Status không hợp lệ. Chỉ chấp nhận: Pending, Completed, Cancelled");
+
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null) return NotFound("Không tìm thấy đơn hàng.");
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            // 🔹 Phân quyền: Customer chỉ có thể hủy đơn của mình
+            if (role == "Customer")
+            {
+                if (order.UserId != userId.Value)
+                    return Forbid("Bạn chỉ có thể cập nhật đơn hàng của chính mình.");
+
+                if (dto.Status != "Cancelled")
+                    return Forbid("Customer chỉ có thể hủy đơn hàng (Cancelled).");
+            }
+            // EnterpriseAdmin và SystemAdmin có thể cập nhật bất kỳ status nào
+
+            order.Status = dto.Status;
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        // 🔹 DELETE /api/orders/{id} - Xóa đơn hàng
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteOrder(int id)
+        {
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null) return NotFound("Không tìm thấy đơn hàng.");
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            // 🔹 Phân quyền
+            if (role == "Customer")
+            {
+                if (order.UserId != userId.Value)
+                    return Forbid("Bạn chỉ có thể xóa đơn hàng của chính mình.");
+
+                // Customer chỉ có thể xóa đơn ở trạng thái Pending
+                if (order.Status != "Pending")
+                    return BadRequest("Chỉ có thể xóa đơn hàng ở trạng thái Pending.");
+            }
+            else if (role == "EnterpriseAdmin")
+            {
+                var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
+                if (!order.OrderItems.Any(oi => oi.Product.EnterpriseId == enterpriseId))
+                    return Forbid("Bạn chỉ có thể xóa đơn hàng có sản phẩm của doanh nghiệp mình.");
+            }
+            // SystemAdmin có thể xóa bất kỳ đơn hàng nào
+
+            _context.Orders.Remove(order);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+    }
+
+    // 🔹 DTO cho Update Order Status
+    public class UpdateOrderStatusDto
+    {
+        public string Status { get; set; } = string.Empty;
     }
 }

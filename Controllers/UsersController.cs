@@ -5,6 +5,7 @@ using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -49,32 +50,43 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<UserDto>> GetUser(int id)
         {
-            var user = await _context.Users.Include(u => u.Enterprise)
+            var targetUser = await _context.Users.Include(u => u.Enterprise)
                                            .FirstOrDefaultAsync(u => u.Id == id);
-            if (user == null) return NotFound();
+            if (targetUser == null) return NotFound();
 
-            var currentUserEmail = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == currentUserEmail);
-            if (currentUser == null) return Forbid();
+            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            int? currentUserId = null;
+            if (!string.IsNullOrWhiteSpace(claimValue))
+            {
+                if (int.TryParse(claimValue, out var userId))
+                    currentUserId = userId;
+                else if (claimValue.Contains("@"))
+                {
+                    var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
+                    currentUserId = currentUser?.Id;
+                }
+            }
+
+            if (currentUserId == null) return Forbid();
 
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
-
-            if (role != "SystemAdmin" && currentUser.Id != user.Id)
+            if (role != "SystemAdmin" && currentUserId.Value != id)
                 return Forbid();
-
 
             var userDto = new UserDto
             {
-                Id = user.Id,
-                Name = user.Name,
-                Email = user.Email,
-                Role = user.Role,
-                EnterpriseId = user.EnterpriseId,
-                Enterprise = user.Enterprise == null ? null : new EnterpriseDto
+                Id = targetUser.Id,
+                Name = targetUser.Name,
+                Email = targetUser.Email,
+                Role = targetUser.Role,
+                EnterpriseId = targetUser.EnterpriseId,
+                Enterprise = targetUser.Enterprise == null ? null : new EnterpriseDto
                 {
-                    Id = user.Enterprise.Id,
-                    Name = user.Enterprise.Name,
-                    Description = user.Enterprise.Description
+                    Id = targetUser.Enterprise.Id,
+                    Name = targetUser.Enterprise.Name,
+                    Description = targetUser.Enterprise.Description
                 }
             };
 

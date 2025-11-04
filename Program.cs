@@ -5,6 +5,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using GiaLaiOCOP.Api.Dtos;
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -111,7 +116,7 @@ using (var scope = app.Services.CreateScope())
 
     // 2️⃣ Gán EnterpriseId cho Product chưa có
     var productsWithoutEnterprise = db.Products
-        .Where(p => p.EnterpriseId == 0 || p.EnterpriseId == null)
+        .Where(p => p.EnterpriseId == 0) // 🔥 Sửa: EnterpriseId là int, chỉ check == 0
         .ToList();
 
     foreach (var p in productsWithoutEnterprise)

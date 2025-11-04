@@ -5,7 +5,7 @@ using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 
-namespace GiaLaiOCOP.Api.Dtos
+namespace GiaLaiOCOP.Api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -31,7 +31,7 @@ namespace GiaLaiOCOP.Api.Dtos
             {
                 Id = e.Id,
                 Name = e.Name,
-                Products = e.Products.Select(p => new ProductDto
+                Products = (e.Products ?? new List<Product>()).Select(p => new ProductDto
                 {
                     Id = p.Id,
                     Name = p.Name,
@@ -39,7 +39,7 @@ namespace GiaLaiOCOP.Api.Dtos
                     Price = p.Price,
                     EnterpriseId = e.Id
                 }).ToList(),
-                Users = e.Users.Select(u => new UserDto
+                Users = (e.Users ?? new List<User>()).Select(u => new UserDto
                 {
                     Id = u.Id,
                     Name = u.Name,
@@ -65,7 +65,7 @@ namespace GiaLaiOCOP.Api.Dtos
             {
                 Id = enterprise.Id,
                 Name = enterprise.Name,
-                Products = enterprise.Products.Select(p => new ProductDto
+                Products = (enterprise.Products ?? new List<Product>()).Select(p => new ProductDto
                 {
                     Id = p.Id,
                     Name = p.Name,
@@ -73,7 +73,7 @@ namespace GiaLaiOCOP.Api.Dtos
                     Price = p.Price,
                     EnterpriseId = enterprise.Id
                 }).ToList(),
-                Users = enterprise.Users.Select(u => new UserDto
+                Users = (enterprise.Users ?? new List<User>()).Select(u => new UserDto
                 {
                     Id = u.Id,
                     Name = u.Name,

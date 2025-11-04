@@ -5,6 +5,7 @@ using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -16,6 +17,28 @@ namespace GiaLaiOCOP.Api.Controllers
         private readonly AppDbContext _context;
         public ProductsController(AppDbContext context) => _context = context;
 
+        // 🔥 Thêm helper method này
+        private async Task<int?> GetUserIdFromTokenAsync()
+        {
+            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (string.IsNullOrWhiteSpace(claimValue))
+                return null;
+
+            if (int.TryParse(claimValue, out var userId))
+                return userId;
+
+            if (claimValue.Contains("@"))
+            {
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == claimValue);
+                return user?.Id;
+            }
+
+            return null;
+        }
+
         // 🔹 GET: api/products
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts()
@@ -25,9 +48,12 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (role == "EnterpriseAdmin")
             {
-                var currentUserId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+                var currentUserId = await GetUserIdFromTokenAsync();
+                if (currentUserId == null)
+                    return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+                
                 var enterpriseId = await _context.Users
-                    .Where(u => u.Id == currentUserId)
+                    .Where(u => u.Id == currentUserId.Value)
                     .Select(u => u.EnterpriseId)
                     .FirstOrDefaultAsync();
 
@@ -43,7 +69,6 @@ namespace GiaLaiOCOP.Api.Controllers
                 Description = p.Description,
                 Price = p.Price,
                 EnterpriseId = p.EnterpriseId
-                // Không map Enterprise nữa vì ProductDto đã không còn thuộc tính Enterprise
             });
 
             return Ok(result);
@@ -73,9 +98,12 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpPost]
         public async Task<ActionResult<ProductDto>> CreateProduct([FromBody] CreateProductDto dto)
         {
-            var currentUserId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var currentUserId = await GetUserIdFromTokenAsync();
+            if (currentUserId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+            
             var enterpriseId = await _context.Users
-                .Where(u => u.Id == currentUserId)
+                .Where(u => u.Id == currentUserId.Value)
                 .Select(u => u.EnterpriseId)
                 .FirstOrDefaultAsync();
 
@@ -113,9 +141,12 @@ namespace GiaLaiOCOP.Api.Controllers
             var product = await _context.Products.FindAsync(id);
             if (product == null) return NotFound();
 
-            var currentUserId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var currentUserId = await GetUserIdFromTokenAsync();
+            if (currentUserId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+            
             var enterpriseId = await _context.Users
-                .Where(u => u.Id == currentUserId)
+                .Where(u => u.Id == currentUserId.Value)
                 .Select(u => u.EnterpriseId)
                 .FirstOrDefaultAsync();
 
@@ -138,9 +169,12 @@ namespace GiaLaiOCOP.Api.Controllers
             var product = await _context.Products.FindAsync(id);
             if (product == null) return NotFound();
 
-            var currentUserId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var currentUserId = await GetUserIdFromTokenAsync();
+            if (currentUserId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+            
             var enterpriseId = await _context.Users
-                .Where(u => u.Id == currentUserId)
+                .Where(u => u.Id == currentUserId.Value)
                 .Select(u => u.EnterpriseId)
                 .FirstOrDefaultAsync();
 

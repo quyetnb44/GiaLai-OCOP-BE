@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 
@@ -7,6 +8,7 @@ namespace GiaLaiOCOP.Api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize] // 🔥 Thêm authorization
     public class ReviewsController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -19,7 +21,10 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Review>>> GetReviews()
         {
-            return await _context.Reviews.ToListAsync();
+            return await _context.Reviews
+                .Include(r => r.User)
+                .Include(r => r.Product)
+                .ToListAsync();
         }
 
         [HttpGet("{id}")]
