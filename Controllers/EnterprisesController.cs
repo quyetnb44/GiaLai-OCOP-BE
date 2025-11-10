@@ -31,13 +31,31 @@ namespace GiaLaiOCOP.Api.Controllers
             {
                 Id = e.Id,
                 Name = e.Name,
+                Description = e.Description,
+                Address = e.Address,
+                Ward = e.Ward,
+                District = e.District,
+                Province = e.Province,
+                Latitude = e.Latitude,
+                Longitude = e.Longitude,
+                PhoneNumber = e.PhoneNumber,
+                EmailContact = e.EmailContact,
+                Website = e.Website,
+                OCOPRating = e.OCOPRating,
+                BusinessField = e.BusinessField,
+                ImageUrl = e.ImageUrl,
+                AverageRating = e.AverageRating,
                 Products = (e.Products ?? new List<Product>()).Select(p => new ProductDto
                 {
                     Id = p.Id,
                     Name = p.Name,
                     Description = p.Description,
                     Price = p.Price,
-                    EnterpriseId = e.Id
+                    EnterpriseId = e.Id,
+                    ImageUrl = p.ImageUrl,
+                    OCOPRating = p.OCOPRating,
+                    StockStatus = p.StockStatus,
+                    AverageRating = p.AverageRating
                 }).ToList(),
                 Users = (e.Users ?? new List<User>()).Select(u => new UserDto
                 {
@@ -65,13 +83,31 @@ namespace GiaLaiOCOP.Api.Controllers
             {
                 Id = enterprise.Id,
                 Name = enterprise.Name,
+                Description = enterprise.Description,
+                Address = enterprise.Address,
+                Ward = enterprise.Ward,
+                District = enterprise.District,
+                Province = enterprise.Province,
+                Latitude = enterprise.Latitude,
+                Longitude = enterprise.Longitude,
+                PhoneNumber = enterprise.PhoneNumber,
+                EmailContact = enterprise.EmailContact,
+                Website = enterprise.Website,
+                OCOPRating = enterprise.OCOPRating,
+                BusinessField = enterprise.BusinessField,
+                ImageUrl = enterprise.ImageUrl,
+                AverageRating = enterprise.AverageRating,
                 Products = (enterprise.Products ?? new List<Product>()).Select(p => new ProductDto
                 {
                     Id = p.Id,
                     Name = p.Name,
                     Description = p.Description,
                     Price = p.Price,
-                    EnterpriseId = enterprise.Id
+                    EnterpriseId = enterprise.Id,
+                    ImageUrl = p.ImageUrl,
+                    OCOPRating = p.OCOPRating,
+                    StockStatus = p.StockStatus,
+                    AverageRating = p.AverageRating
                 }).ToList(),
                 Users = (enterprise.Users ?? new List<User>()).Select(u => new UserDto
                 {
@@ -95,6 +131,20 @@ namespace GiaLaiOCOP.Api.Controllers
             {
                 Id = enterprise.Id,
                 Name = enterprise.Name,
+                Description = enterprise.Description,
+                Address = enterprise.Address,
+                Ward = enterprise.Ward,
+                District = enterprise.District,
+                Province = enterprise.Province,
+                Latitude = enterprise.Latitude,
+                Longitude = enterprise.Longitude,
+                PhoneNumber = enterprise.PhoneNumber,
+                EmailContact = enterprise.EmailContact,
+                Website = enterprise.Website,
+                OCOPRating = enterprise.OCOPRating,
+                BusinessField = enterprise.BusinessField,
+                ImageUrl = enterprise.ImageUrl,
+                AverageRating = enterprise.AverageRating,
                 Products = new List<ProductDto>(),
                 Users = new List<UserDto>()
             };

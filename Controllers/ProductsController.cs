@@ -60,7 +60,9 @@ namespace GiaLaiOCOP.Api.Controllers
                 query = query.Where(p => p.EnterpriseId == enterpriseId);
             }
 
-            var products = await query.ToListAsync();
+            var products = await query
+                .Include(p => p.Reviews)
+                .ToListAsync();
 
             var result = products.Select(p => new ProductDto
             {
@@ -68,7 +70,11 @@ namespace GiaLaiOCOP.Api.Controllers
                 Name = p.Name,
                 Description = p.Description,
                 Price = p.Price,
-                EnterpriseId = p.EnterpriseId
+                EnterpriseId = p.EnterpriseId,
+                ImageUrl = p.ImageUrl,
+                OCOPRating = p.OCOPRating,
+                StockStatus = p.StockStatus,
+                AverageRating = p.Reviews.Any() ? p.Reviews.Average(r => (double)r.Rating) : null
             });
 
             return Ok(result);
@@ -78,7 +84,10 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<ProductDto>> GetProduct(int id)
         {
-            var product = await _context.Products.FindAsync(id);
+            var product = await _context.Products
+                .Include(p => p.Reviews)
+                .FirstOrDefaultAsync(p => p.Id == id);
+            
             if (product == null) return NotFound();
 
             var productDto = new ProductDto
@@ -87,7 +96,11 @@ namespace GiaLaiOCOP.Api.Controllers
                 Name = product.Name,
                 Description = product.Description,
                 Price = product.Price,
-                EnterpriseId = product.EnterpriseId
+                EnterpriseId = product.EnterpriseId,
+                ImageUrl = product.ImageUrl,
+                OCOPRating = product.OCOPRating,
+                StockStatus = product.StockStatus,
+                AverageRating = product.Reviews.Any() ? product.Reviews.Average(r => (double)r.Rating) : null
             };
 
             return Ok(productDto);
@@ -115,7 +128,10 @@ namespace GiaLaiOCOP.Api.Controllers
                 Name = dto.Name,
                 Description = dto.Description,
                 Price = dto.Price,
-                EnterpriseId = enterpriseId.Value
+                EnterpriseId = enterpriseId.Value,
+                ImageUrl = dto.ImageUrl,
+                OCOPRating = dto.OCOPRating,
+                StockStatus = dto.StockStatus ?? "InStock"
             };
 
             _context.Products.Add(product);
@@ -127,7 +143,11 @@ namespace GiaLaiOCOP.Api.Controllers
                 Name = product.Name,
                 Description = product.Description,
                 Price = product.Price,
-                EnterpriseId = product.EnterpriseId
+                EnterpriseId = product.EnterpriseId,
+                ImageUrl = product.ImageUrl,
+                OCOPRating = product.OCOPRating,
+                StockStatus = product.StockStatus,
+                AverageRating = null
             };
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, productDto);
@@ -156,6 +176,10 @@ namespace GiaLaiOCOP.Api.Controllers
             product.Name = dto.Name;
             product.Description = dto.Description;
             product.Price = dto.Price;
+            product.ImageUrl = dto.ImageUrl;
+            product.OCOPRating = dto.OCOPRating;
+            product.StockStatus = dto.StockStatus ?? product.StockStatus;
+            product.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
             return NoContent();
@@ -192,5 +216,8 @@ namespace GiaLaiOCOP.Api.Controllers
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
         public decimal Price { get; set; }
+        public string? ImageUrl { get; set; }
+        public int? OCOPRating { get; set; }
+        public string? StockStatus { get; set; } // "InStock" or "OutOfStock"
     }
 }

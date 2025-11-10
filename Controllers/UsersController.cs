@@ -99,7 +99,12 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpPost("enterprise-admin")]
         public async Task<ActionResult<UserDto>> CreateEnterpriseAdmin([FromBody] CreateEnterpriseAdminDto dto)
         {
-            if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+            // 🔹 Kiểm tra validation
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLower();
+            if (await _context.Users.AnyAsync(u => u.Email == email))
                 return Conflict("Email đã được sử dụng.");
 
             var enterprise = await _context.Enterprises.FindAsync(dto.EnterpriseId);
@@ -108,8 +113,8 @@ namespace GiaLaiOCOP.Api.Controllers
 
             var user = new User
             {
-                Name = dto.Name,
-                Email = dto.Email,
+                Name = dto.Name.Trim(),
+                Email = email,
                 Password = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Role = "EnterpriseAdmin",
                 EnterpriseId = dto.EnterpriseId
@@ -142,13 +147,18 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpPost("customer")]
         public async Task<ActionResult<UserDto>> CreateCustomer([FromBody] RegisterDto dto)
         {
-            if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+            // 🔹 Kiểm tra validation
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLower();
+            if (await _context.Users.AnyAsync(u => u.Email == email))
                 return Conflict("Email đã được sử dụng.");
 
             var user = new User
             {
-                Name = dto.Name,
-                Email = dto.Email,
+                Name = dto.Name.Trim(),
+                Email = email,
                 Password = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Role = "Customer"
             };

@@ -27,13 +27,19 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterDto dto)
         {
-            if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+            // 🔹 Kiểm tra validation
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            // 🔹 Kiểm tra email đã tồn tại (so sánh lowercase)
+            var email = dto.Email.Trim().ToLower();
+            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == email))
                 return Conflict("Email đã được sử dụng.");
 
             var user = new User
             {
-                Name = dto.Name,
-                Email = dto.Email,
+                Name = dto.Name.Trim(),
+                Email = email,
                 Password = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Role = "Customer"
             };
@@ -47,10 +53,15 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
-            var user = await _context.Users.SingleOrDefaultAsync(u => u.Email == dto.Email);
+            // 🔹 Kiểm tra validation
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLower();
+            var user = await _context.Users.SingleOrDefaultAsync(u => u.Email == email);
             if (user == null) return Unauthorized("Email hoặc mật khẩu không đúng.");
 
-            // kiểm tra password
+            // 🔹 Kiểm tra password
             if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.Password))
                 return Unauthorized("Email hoặc mật khẩu không đúng.");
 
