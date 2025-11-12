@@ -15,6 +15,15 @@ namespace GiaLaiOCOP.Api.Dtos
         public int? OCOPRating { get; set; }
         public string District { get; set; } = string.Empty;
         public string Province { get; set; } = string.Empty;
+        
+        // 🔹 Khoảng cách từ vị trí người dùng (km) - chỉ có khi có tọa độ người dùng
+        public double? Distance { get; set; }
+        
+        // 🔹 Số lượng đánh giá
+        public int RatingCount { get; set; }
+        
+        // 🔹 URL để mở Google Maps chỉ đường
+        public string? DirectionsUrl { get; set; }
     }
 }
 

@@ -140,5 +140,11 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
         Console.WriteLine("SystemAdmin mặc định đã được tạo: admin@system.com / 123456");
     }
+
+    // 4️⃣ Seed dữ liệu mẫu cho Map (chỉ trong Development)
+    if (app.Environment.IsDevelopment())
+    {
+        MapSeedData.SeedMapData(db);
+    }
 }
 app.Run();

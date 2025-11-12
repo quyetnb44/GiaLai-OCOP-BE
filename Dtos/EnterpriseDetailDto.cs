@@ -27,6 +27,15 @@ namespace GiaLaiOCOP.Api.Dtos
         
         // 🔹 Tổng số sản phẩm
         public int TotalProducts { get; set; }
+        
+        // 🔹 Số lượng đánh giá
+        public int RatingCount { get; set; }
+        
+        // 🔹 URL để mở Google Maps chỉ đường
+        public string? DirectionsUrl { get; set; }
+        
+        // 🔹 Khoảng cách từ vị trí người dùng (km) - chỉ có khi có tọa độ người dùng
+        public double? Distance { get; set; }
     }
 }
 
