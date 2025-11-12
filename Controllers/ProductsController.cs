@@ -11,7 +11,7 @@ namespace GiaLaiOCOP.Api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize]
+    // Không yêu cầu Authorize ở controller level - cho phép xem sản phẩm công khai
     public class ProductsController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -39,13 +39,16 @@ namespace GiaLaiOCOP.Api.Controllers
             return null;
         }
 
-        // 🔹 GET: api/products
+        // 🔹 GET: api/products - Cho phép xem công khai (không cần đăng nhập)
+        [AllowAnonymous]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProductDto>>> GetProducts()
         {
+            // Cho phép xem công khai, nhưng nếu đã đăng nhập thì áp dụng filter theo role
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
             IQueryable<Product> query = _context.Products.Include(p => p.Enterprise);
 
+            // Nếu là EnterpriseAdmin đã đăng nhập, chỉ hiển thị sản phẩm của Enterprise mình
             if (role == "EnterpriseAdmin")
             {
                 var currentUserId = await GetUserIdFromTokenAsync();
@@ -80,7 +83,8 @@ namespace GiaLaiOCOP.Api.Controllers
             return Ok(result);
         }
 
-        // 🔹 GET: api/products/{id}
+        // 🔹 GET: api/products/{id} - Cho phép xem công khai (không cần đăng nhập)
+        [AllowAnonymous]
         [HttpGet("{id}")]
         public async Task<ActionResult<ProductDto>> GetProduct(int id)
         {

@@ -19,6 +19,7 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<Location> Locations { get; set; }
         public DbSet<Enterprise> Enterprises { get; set; }
         public DbSet<EnterpriseApplication> EnterpriseApplications { get; set; }
+        public DbSet<Payment> Payments { get; set; }
 
 
 
@@ -55,6 +56,22 @@ namespace GiaLaiOCOP.Api.Data
             modelBuilder.Entity<Order>()
                 .Property(o => o.TotalAmount)
                 .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<Payment>()
+                .Property(p => p.Amount)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<Payment>()
+                .HasOne(p => p.Order)
+                .WithMany(o => o.Payments)
+                .HasForeignKey(p => p.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Payment>()
+                .HasOne(p => p.Enterprise)
+                .WithMany(e => e.Payments)
+                .HasForeignKey(p => p.EnterpriseId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

@@ -15,10 +15,18 @@ namespace GiaLaiOCOP.Api.Models
 
         public decimal TotalAmount { get; set; }
 
-        public string Status { get; set; } = "Pending"; // Pending, Completed, Cancelled
+        public string Status { get; set; } = "Pending"; // Pending, Processing, Shipped, Completed, Cancelled
 
         public string? ShippingAddress { get; set; }
 
+        // 🔹 Thông tin thanh toán
+        public string PaymentMethod { get; set; } = "COD"; // COD, BankTransfer
+        public string PaymentStatus { get; set; } = "Pending"; // Pending, AwaitingTransfer, Paid, PartiallyPaid, Cancelled
+        public string? PaymentReference { get; set; }
+
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
+
+        [JsonIgnore]
+        public ICollection<Payment> Payments { get; set; } = new List<Payment>();
     }
 }

@@ -3,6 +3,7 @@ using System;
 using GiaLaiOCOP.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GiaLaiOCOP.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251112095131_AddPaymentsSupport")]
+    partial class AddPaymentsSupport
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -36,15 +39,6 @@ namespace GiaLaiOCOP.Api.Migrations
 
                     b.Property<double?>("AverageRating")
                         .HasColumnType("double precision");
-
-                    b.Property<string>("BankAccount")
-                        .HasColumnType("text");
-
-                    b.Property<string>("BankAccountName")
-                        .HasColumnType("text");
-
-                    b.Property<string>("BankCode")
-                        .HasColumnType("text");
 
                     b.Property<string>("BusinessField")
                         .IsRequired()
@@ -375,9 +369,6 @@ namespace GiaLaiOCOP.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("EnterpriseId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Method")
                         .IsRequired()
                         .HasColumnType("text");
@@ -403,8 +394,6 @@ namespace GiaLaiOCOP.Api.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("EnterpriseId");
 
                     b.HasIndex("OrderId");
 
@@ -626,19 +615,11 @@ namespace GiaLaiOCOP.Api.Migrations
 
             modelBuilder.Entity("GiaLaiOCOP.Api.Models.Payment", b =>
                 {
-                    b.HasOne("GiaLaiOCOP.Api.Models.Enterprise", "Enterprise")
-                        .WithMany("Payments")
-                        .HasForeignKey("EnterpriseId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("GiaLaiOCOP.Api.Models.Order", "Order")
                         .WithMany("Payments")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Enterprise");
 
                     b.Navigation("Order");
                 });
@@ -699,8 +680,6 @@ namespace GiaLaiOCOP.Api.Migrations
 
             modelBuilder.Entity("GiaLaiOCOP.Api.Models.Enterprise", b =>
                 {
-                    b.Navigation("Payments");
-
                     b.Navigation("Products");
 
                     b.Navigation("Users");

@@ -57,26 +57,35 @@ namespace GiaLaiOCOP.Api.Controllers
             {
                 query = _context.Orders
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
+                    .Include(o => o.Payments)
                     .Where(o => o.UserId == userId.Value);
             }
             else if (role == "EnterpriseAdmin")
             {
                 var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
+                if (enterpriseId == 0)
+                    return Forbid("EnterpriseAdmin không thuộc Enterprise nào.");
+                
                 query = _context.Orders
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
-                    .Where(o => o.OrderItems.Any(oi => oi.Product.EnterpriseId == enterpriseId));
+                    .Include(o => o.Payments)
+                    .Where(o => o.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId));
             }
             else if (role == "SystemAdmin")
             {
                 query = _context.Orders
-                    .Include(o => o.OrderItems).ThenInclude(oi => oi.Product);
+                    .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
+                    .Include(o => o.Payments);
             }
             else
             {
                 return Forbid();
             }
 
-            var orders = await query.ToListAsync();
+            var orders = await query
+                .Include(o => o.Payments)
+                    .ThenInclude(p => p.Enterprise)
+                .ToListAsync();
             
             // Map sang DTOs
             var orderDtos = orders.Select(o => new OrderDto
@@ -87,6 +96,9 @@ namespace GiaLaiOCOP.Api.Controllers
                 ShippingAddress = o.ShippingAddress,
                 TotalAmount = o.TotalAmount,
                 Status = o.Status,
+                PaymentMethod = o.PaymentMethod,
+                PaymentStatus = o.PaymentStatus,
+                PaymentReference = o.PaymentReference,
                 OrderItems = o.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
@@ -94,7 +106,8 @@ namespace GiaLaiOCOP.Api.Controllers
                     ProductId = oi.ProductId,
                     Quantity = oi.Quantity,
                     Price = oi.Price
-                }).ToList()
+                }).ToList(),
+                Payments = o.Payments.Select(MapPaymentToDto).ToList()
             });
 
             return Ok(orderDtos);
@@ -110,6 +123,8 @@ namespace GiaLaiOCOP.Api.Controllers
 
             var order = await _context.Orders
                 .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
+                .Include(o => o.Payments)
+                    .ThenInclude(p => p.Enterprise)
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null) return NotFound("Không tìm thấy đơn hàng.");
@@ -125,7 +140,10 @@ namespace GiaLaiOCOP.Api.Controllers
             else if (role == "EnterpriseAdmin")
             {
                 var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
-                if (!order.OrderItems.Any(oi => oi.Product.EnterpriseId == enterpriseId))
+                if (enterpriseId == 0)
+                    return Forbid("EnterpriseAdmin không thuộc Enterprise nào.");
+                
+                if (!order.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId))
                     return Forbid("Bạn chỉ có thể xem đơn hàng có sản phẩm của doanh nghiệp mình.");
             }
             // SystemAdmin có thể xem tất cả, không cần check
@@ -138,6 +156,9 @@ namespace GiaLaiOCOP.Api.Controllers
                 ShippingAddress = order.ShippingAddress,
                 TotalAmount = order.TotalAmount,
                 Status = order.Status,
+                PaymentMethod = order.PaymentMethod,
+                PaymentStatus = order.PaymentStatus,
+                PaymentReference = order.PaymentReference,
                 OrderItems = order.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
@@ -145,7 +166,8 @@ namespace GiaLaiOCOP.Api.Controllers
                     ProductId = oi.ProductId,
                     Quantity = oi.Quantity,
                     Price = oi.Price
-                }).ToList()
+                }).ToList(),
+                Payments = order.Payments.Select(MapPaymentToDto).ToList()
             };
 
             return Ok(orderDto);
@@ -175,12 +197,19 @@ namespace GiaLaiOCOP.Api.Controllers
                     return BadRequest($"Số lượng sản phẩm ID {item.ProductId} phải lớn hơn 0.");
             }
 
+            var paymentMethod = string.IsNullOrWhiteSpace(dto.PaymentMethod) ? "COD" : dto.PaymentMethod.Trim();
+            paymentMethod = paymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase)
+                ? "BankTransfer"
+                : "COD";
+
             var order = new Order
             {
                 UserId = userId.Value,
                 ShippingAddress = dto.ShippingAddress,
                 OrderDate = DateTime.UtcNow,
-                Status = "Pending"
+                Status = "Pending",
+                PaymentMethod = paymentMethod,
+                PaymentStatus = "Pending" // Sẽ được cập nhật khi tạo Payment thực sự
             };
 
             _context.Orders.Add(order);
@@ -192,6 +221,10 @@ namespace GiaLaiOCOP.Api.Controllers
                 var product = await _context.Products.FindAsync(item.ProductId);
                 if (product == null)
                     return BadRequest($"Sản phẩm ID {item.ProductId} không tồn tại.");
+
+                // 🔹 Validation: Kiểm tra tình trạng hàng
+                if (product.StockStatus == "OutOfStock")
+                    return BadRequest($"Sản phẩm '{product.Name}' (ID: {item.ProductId}) đã hết hàng.");
 
                 var orderItem = new OrderItem
                 {
@@ -207,8 +240,15 @@ namespace GiaLaiOCOP.Api.Controllers
             order.TotalAmount = total;
             await _context.SaveChangesAsync();
 
-            // 🔹 Reload để lấy OrderItems đã lưu
+            // 🔹 Reload để lấy OrderItems và Payments đã lưu
             await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
+            await _context.Entry(order).Collection(o => o.Payments).LoadAsync();
+            
+            // Load Enterprise cho mỗi payment
+            foreach (var payment in order.Payments)
+            {
+                await _context.Entry(payment).Reference(p => p.Enterprise).LoadAsync();
+            }
 
             // Map sang DTO
             var orderDto = new OrderDto
@@ -219,6 +259,9 @@ namespace GiaLaiOCOP.Api.Controllers
                 ShippingAddress = order.ShippingAddress,
                 TotalAmount = order.TotalAmount,
                 Status = order.Status,
+                PaymentMethod = order.PaymentMethod,
+                PaymentStatus = order.PaymentStatus,
+                PaymentReference = order.PaymentReference,
                 OrderItems = order.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
@@ -226,7 +269,8 @@ namespace GiaLaiOCOP.Api.Controllers
                     ProductId = oi.ProductId,
                     Quantity = oi.Quantity,
                     Price = oi.Price
-                }).ToList()
+                }).ToList(),
+                Payments = order.Payments.Select(MapPaymentToDto).ToList()
             };
 
             return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, orderDto);
@@ -241,15 +285,21 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             // 🔹 Validation: Status hợp lệ
-            if (dto.Status != "Pending" && dto.Status != "Completed" && dto.Status != "Cancelled")
-                return BadRequest("Status không hợp lệ. Chỉ chấp nhận: Pending, Completed, Cancelled");
+            var validStatuses = new[] { "Pending", "Processing", "Shipped", "Completed", "Cancelled" };
+            if (!validStatuses.Contains(dto.Status))
+                return BadRequest($"Status không hợp lệ. Chỉ chấp nhận: {string.Join(", ", validStatuses)}");
 
-            var order = await _context.Orders.FindAsync(id);
-            if (order == null) return NotFound("Không tìm thấy đơn hàng.");
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                .FirstOrDefaultAsync(o => o.Id == id);
+            
+            if (order == null) 
+                return NotFound("Không tìm thấy đơn hàng.");
 
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            // 🔹 Phân quyền: Customer chỉ có thể hủy đơn của mình
+            // 🔹 Phân quyền: Customer chỉ có thể hủy đơn của mình khi EnterpriseAdmin chưa xử lý
             if (role == "Customer")
             {
                 if (order.UserId != userId.Value)
@@ -257,8 +307,28 @@ namespace GiaLaiOCOP.Api.Controllers
 
                 if (dto.Status != "Cancelled")
                     return Forbid("Customer chỉ có thể hủy đơn hàng (Cancelled).");
+
+                // Customer chỉ có thể hủy khi đơn hàng vẫn còn ở trạng thái Pending
+                // (EnterpriseAdmin chưa xử lý)
+                if (order.Status != "Pending")
+                    return Forbid("Không thể hủy đơn hàng. Đơn hàng đã được doanh nghiệp xử lý (trạng thái: " + order.Status + ").");
             }
-            // EnterpriseAdmin và SystemAdmin có thể cập nhật bất kỳ status nào
+            // 🔹 Phân quyền: EnterpriseAdmin chỉ có thể cập nhật đơn hàng có sản phẩm của Enterprise mình
+            else if (role == "EnterpriseAdmin")
+            {
+                var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
+                if (enterpriseId == 0)
+                    return Forbid("EnterpriseAdmin không thuộc Enterprise nào.");
+
+                var hasAccess = order.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId);
+                if (!hasAccess)
+                    return Forbid("Bạn chỉ có thể cập nhật đơn hàng có sản phẩm của doanh nghiệp mình.");
+
+                // EnterpriseAdmin không thể set status = "Cancelled" (chỉ Customer mới có thể hủy)
+                if (dto.Status == "Cancelled")
+                    return Forbid("EnterpriseAdmin không thể hủy đơn hàng. Chỉ Customer mới có thể hủy đơn hàng.");
+            }
+            // SystemAdmin có thể cập nhật bất kỳ status nào
 
             order.Status = dto.Status;
             await _context.SaveChangesAsync();
@@ -295,8 +365,15 @@ namespace GiaLaiOCOP.Api.Controllers
             else if (role == "EnterpriseAdmin")
             {
                 var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
-                if (!order.OrderItems.Any(oi => oi.Product.EnterpriseId == enterpriseId))
+                if (enterpriseId == 0)
+                    return Forbid("EnterpriseAdmin không thuộc Enterprise nào.");
+                
+                if (!order.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId))
                     return Forbid("Bạn chỉ có thể xóa đơn hàng có sản phẩm của doanh nghiệp mình.");
+                
+                // EnterpriseAdmin chỉ có thể xóa đơn ở trạng thái Pending hoặc Cancelled
+                if (order.Status != "Pending" && order.Status != "Cancelled")
+                    return BadRequest("Chỉ có thể xóa đơn hàng ở trạng thái Pending hoặc Cancelled.");
             }
             // SystemAdmin có thể xóa bất kỳ đơn hàng nào
 
@@ -305,11 +382,36 @@ namespace GiaLaiOCOP.Api.Controllers
 
             return NoContent();
         }
+
+        private static PaymentDto MapPaymentToDto(Payment payment)
+        {
+            return new PaymentDto
+            {
+                Id = payment.Id,
+                OrderId = payment.OrderId,
+                EnterpriseId = payment.EnterpriseId,
+                EnterpriseName = payment.Enterprise?.Name,
+                Amount = payment.Amount,
+                Method = payment.Method,
+                Status = payment.Status,
+                Reference = payment.Reference,
+                BankCode = payment.BankCode,
+                BankAccount = payment.BankAccount,
+                AccountName = payment.AccountName,
+                QrCodeUrl = payment.QrCodeUrl,
+                Notes = payment.Notes,
+                CreatedAt = payment.CreatedAt,
+                PaidAt = payment.PaidAt
+            };
+        }
     }
 
     // 🔹 DTO cho Update Order Status
     public class UpdateOrderStatusDto
     {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Status là bắt buộc.")]
+        [System.ComponentModel.DataAnnotations.RegularExpression("^(Pending|Processing|Shipped|Completed|Cancelled)$", 
+            ErrorMessage = "Status không hợp lệ. Chỉ chấp nhận: Pending, Processing, Shipped, Completed, Cancelled")]
         public string Status { get; set; } = string.Empty;
     }
 }

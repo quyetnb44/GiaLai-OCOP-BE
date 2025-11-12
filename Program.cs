@@ -1,6 +1,7 @@
 ﻿using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Services;
+using GiaLaiOCOP.Api.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -75,6 +76,9 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
+
+// 🔹 Configure BankTransfer settings
+builder.Services.Configure<BankTransferSettings>(builder.Configuration.GetSection("BankTransfer"));
 
 
 var app = builder.Build();

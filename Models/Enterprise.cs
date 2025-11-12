@@ -29,12 +29,20 @@ namespace GiaLaiOCOP.Api.Models
         // 🔹 Điểm đánh giá trung bình (tính từ Reviews của các sản phẩm)
         public double? AverageRating { get; set; }                     // Điểm đánh giá trung bình (1-5)
         
+        // 🔹 Thông tin thanh toán (cho Bank Transfer)
+        public string? BankCode { get; set; }                          // Mã ngân hàng (ví dụ: "970415" cho MB Bank)
+        public string? BankAccount { get; set; }                       // Số tài khoản ngân hàng
+        public string? BankAccountName { get; set; }                   // Tên chủ tài khoản
+        
         // 🔹 Quan hệ
         // 1 doanh nghiệp có nhiều sản phẩm
         public ICollection<Product>? Products { get; set; }
         // 1 doanh nghiệp có nhiều người dùng (bao gồm admin & customer)
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON
         public ICollection<User>? Users { get; set; }
+        // 1 doanh nghiệp có nhiều payments
+        [JsonIgnore]
+        public ICollection<Payment>? Payments { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
