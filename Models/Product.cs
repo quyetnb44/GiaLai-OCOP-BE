@@ -13,6 +13,9 @@ namespace GiaLaiOCOP.Api.Models
         public string? ImageUrl { get; set; }                          // Ảnh sản phẩm
         public int? OCOPRating { get; set; }                           // Xếp hạng OCOP (3-5 sao)
         public string StockStatus { get; set; } = "InStock";           // Tình trạng: "InStock" (còn hàng) / "OutOfStock" (hết hàng)
+        public string Status { get; set; } = "PendingApproval";        // PendingApproval, Approved, Rejected
+        public int? ApprovedByUserId { get; set; }
+        public DateTime? ApprovedAt { get; set; }
         
         // 🔹 Điểm đánh giá trung bình (tính từ Reviews)
         public double? AverageRating { get; set; }                     // Điểm đánh giá trung bình (1-5)
@@ -20,6 +23,9 @@ namespace GiaLaiOCOP.Api.Models
         // Doanh nghiệp sở hữu sản phẩm
         public int EnterpriseId { get; set; }
         public Enterprise Enterprise { get; set; }
+
+        public int? CategoryId { get; set; }
+        public Category? Category { get; set; }
 
         [JsonIgnore] // 🧩 Bỏ danh sách OrderItems để tránh vòng lặp Product → OrderItem → Product
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();

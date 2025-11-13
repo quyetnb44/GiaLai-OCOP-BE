@@ -6,6 +6,7 @@ using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -24,6 +25,9 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> Apply([FromBody] CreateEnterpriseApplicationDto dto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
             // 🔹 Lấy thông tin userId từ token
             var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                              ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
@@ -31,17 +35,27 @@ namespace GiaLaiOCOP.Api.Controllers
             if (string.IsNullOrWhiteSpace(claimValue))
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
+            User? applicant = null;
             int userId;
             if (claimValue.Contains("@"))
             {
-                var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
-                if (user == null) return Unauthorized("Người dùng không tồn tại.");
-                userId = user.Id;
+                applicant = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
+                if (applicant == null) return Unauthorized("Người dùng không tồn tại.");
+                userId = applicant.Id;
             }
             else if (!int.TryParse(claimValue, out userId))
             {
                 return Unauthorized("Token không hợp lệ hoặc sai định dạng.");
             }
+            else
+            {
+                applicant = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+                if (applicant == null)
+                    return Unauthorized("Người dùng không tồn tại.");
+            }
+
+            if (applicant!.Role == "EnterpriseAdmin")
+                return BadRequest("Tài khoản của bạn đã là EnterpriseAdmin.");
 
             // 🔹 Kiểm tra nếu có đơn pending
             var hasPending = await _context.EnterpriseApplications
@@ -155,10 +169,25 @@ namespace GiaLaiOCOP.Api.Controllers
             if (app == null) return NotFound("Không tìm thấy đơn đăng ký.");
             if (app.Status != "Pending") return BadRequest("Đơn đã được xử lý.");
 
+            if (app.User == null)
+                return BadRequest("Không tìm thấy thông tin người dùng nộp đơn.");
+
+            if (app.User.Role == "EnterpriseAdmin" && app.User.EnterpriseId.HasValue)
+                return BadRequest("Người dùng đã thuộc một doanh nghiệp khác.");
+
             var enterprise = new Enterprise
             {
                 Name = app.EnterpriseName,
-                Description = app.ProductDescription
+                Description = string.IsNullOrWhiteSpace(app.ProductDescription) ? app.BusinessField : app.ProductDescription,
+                Address = app.Address,
+                Ward = app.Ward,
+                District = app.District,
+                Province = app.Province,
+                PhoneNumber = app.PhoneNumber,
+                EmailContact = app.EmailContact,
+                Website = app.Website,
+                BusinessField = app.BusinessField,
+                ImageUrl = GetPrimaryImage(app.ProductImages)
             };
 
             _context.Enterprises.Add(enterprise);
@@ -192,6 +221,20 @@ namespace GiaLaiOCOP.Api.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Đã từ chối đơn đăng ký OCOP." });
+        }
+
+        private static string? GetPrimaryImage(string? imageList)
+        {
+            if (string.IsNullOrWhiteSpace(imageList))
+                return null;
+
+            var parts = imageList
+                .Split(new[] { ',', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .ToList();
+
+            return parts.FirstOrDefault();
         }
     }
 }

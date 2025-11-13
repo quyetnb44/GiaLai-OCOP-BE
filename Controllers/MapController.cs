@@ -56,13 +56,15 @@ namespace GiaLaiOCOP.Api.Controllers
                     e.Description.ToLower().Contains(keyword) ||
                     e.BusinessField.ToLower().Contains(keyword) ||
                     e.Address.ToLower().Contains(keyword) ||
-                    e.Products!.Any(p => p.Name.ToLower().Contains(keyword))
+                    e.Products!.Any(p => p.Status == "Approved" && p.Name.ToLower().Contains(keyword))
                 );
             }
 
             var enterprises = await query
                 .Include(e => e.Products!)
                     .ThenInclude(p => p.Reviews)
+                .Include(e => e.Products!)
+                    .ThenInclude(p => p.Category)
                 .ToListAsync();
 
             // Map to DTO với distance và rating count
@@ -128,6 +130,8 @@ namespace GiaLaiOCOP.Api.Controllers
                            e.Longitude >= minLongitude && e.Longitude <= maxLongitude)
                 .Include(e => e.Products!)
                     .ThenInclude(p => p.Reviews)
+                .Include(e => e.Products!)
+                    .ThenInclude(p => p.Category)
                 .ToListAsync();
 
             var enterprisesDto = enterprises.Select(e => MapToEnterpriseMapDto(e, userLat, userLng)).ToList();
@@ -181,6 +185,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 .Where(e => e.Latitude != null && e.Longitude != null)
                 .Include(e => e.Products!)
                     .ThenInclude(p => p.Reviews)
+                .Include(e => e.Products!)
+                    .ThenInclude(p => p.Category)
                 .ToListAsync();
 
             // Tính khoảng cách và lọc
@@ -259,7 +265,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     e.Description.ToLower().Contains(keyword) ||
                     e.BusinessField.ToLower().Contains(keyword) ||
                     e.Address.ToLower().Contains(keyword) ||
-                    e.Products!.Any(p => p.Name.ToLower().Contains(keyword))
+                    e.Products!.Any(p => p.Status == "Approved" && p.Name.ToLower().Contains(keyword))
                 );
             }
 
@@ -275,18 +281,23 @@ namespace GiaLaiOCOP.Api.Controllers
             var enterprises = await query
                 .Include(e => e.Products!)
                     .ThenInclude(p => p.Reviews)
+                .Include(e => e.Products!)
+                    .ThenInclude(p => p.Category)
                 .ToListAsync();
 
+            var userLatForDistance = request.UserLatitude ?? request.UserLat;
+            var userLngForDistance = request.UserLongitude ?? request.UserLng;
+
             // Lọc theo khoảng cách từ vị trí người dùng
-            if (request.UserLatitude.HasValue && request.UserLongitude.HasValue && request.MaxDistance.HasValue)
+            if (userLatForDistance.HasValue && userLngForDistance.HasValue && request.MaxDistance.HasValue)
             {
                 enterprises = enterprises
                     .Where(e => e.Latitude.HasValue && e.Longitude.HasValue)
                     .Where(e =>
                     {
                         var distance = CalculateDistance(
-                            request.UserLatitude.Value,
-                            request.UserLongitude.Value,
+                            userLatForDistance.Value,
+                            userLngForDistance.Value,
                             e.Latitude!.Value,
                             e.Longitude!.Value);
                         return distance <= request.MaxDistance.Value;
@@ -294,8 +305,8 @@ namespace GiaLaiOCOP.Api.Controllers
                     .ToList();
             }
 
-            var enterprisesDto = enterprises.Select(e => MapToEnterpriseMapDto(e, request.UserLat, request.UserLng)).ToList();
-            enterprisesDto = ApplySorting(enterprisesDto, request.SortBy ?? "name", request.SortOrder ?? "asc", request.UserLat, request.UserLng);
+            var enterprisesDto = enterprises.Select(e => MapToEnterpriseMapDto(e, userLatForDistance, userLngForDistance)).ToList();
+            enterprisesDto = ApplySorting(enterprisesDto, request.SortBy ?? "name", request.SortOrder ?? "asc", userLatForDistance, userLngForDistance);
 
             var total = enterprisesDto.Count;
             var pagedResults = enterprisesDto
@@ -330,13 +341,17 @@ namespace GiaLaiOCOP.Api.Controllers
             var enterprise = await _context.Enterprises
                 .Include(e => e.Products!)
                     .ThenInclude(p => p.Reviews)
+                .Include(e => e.Products!)
+                    .ThenInclude(p => p.Category)
                 .FirstOrDefaultAsync(e => e.Id == id);
 
             if (enterprise == null)
                 return NotFound(new { Error = "Không tìm thấy doanh nghiệp." });
 
             // Lấy 3 sản phẩm nổi bật
-            var featuredProducts = enterprise.Products?
+            var approvedProducts = GetApprovedProducts(enterprise).ToList();
+
+            var featuredProducts = approvedProducts
                 .OrderByDescending(p => p.OCOPRating ?? 0)
                 .ThenByDescending(p => CalculateAverageRating(p.Reviews) ?? 0)
                 .Take(3)
@@ -350,14 +365,17 @@ namespace GiaLaiOCOP.Api.Controllers
                     OCOPRating = p.OCOPRating,
                     StockStatus = p.StockStatus,
                     AverageRating = CalculateAverageRating(p.Reviews),
-                    EnterpriseId = p.EnterpriseId
+                    EnterpriseId = p.EnterpriseId,
+                    Status = p.Status,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category?.Name
                 })
-                .ToList() ?? new List<ProductMapDto>();
+                .ToList();
 
             // Tính rating count
-            var ratingCount = enterprise.Products?
+            var ratingCount = approvedProducts
                 .SelectMany(p => p.Reviews)
-                .Count() ?? 0;
+                .Count();
 
             // Tính distance nếu có tọa độ người dùng
             double? distance = null;
@@ -381,11 +399,11 @@ namespace GiaLaiOCOP.Api.Controllers
                 EmailContact = enterprise.EmailContact,
                 Website = enterprise.Website,
                 ImageUrl = enterprise.ImageUrl,
-                AverageRating = CalculateAverageRating(enterprise.Products),
+                AverageRating = CalculateAverageRating(approvedProducts),
                 OCOPRating = enterprise.OCOPRating,
                 BusinessField = enterprise.BusinessField,
                 FeaturedProducts = featuredProducts,
-                TotalProducts = enterprise.Products?.Count ?? 0,
+                TotalProducts = approvedProducts.Count,
                 RatingCount = ratingCount,
                 Distance = distance,
                 DirectionsUrl = enterprise.Latitude.HasValue && enterprise.Longitude.HasValue
@@ -414,12 +432,16 @@ namespace GiaLaiOCOP.Api.Controllers
             var enterprise = await _context.Enterprises
                 .Include(e => e.Products!)
                     .ThenInclude(p => p.Reviews)
+                .Include(e => e.Products!)
+                    .ThenInclude(p => p.Category)
                 .FirstOrDefaultAsync(e => e.Id == id);
 
             if (enterprise == null)
                 return NotFound(new { Error = "Không tìm thấy doanh nghiệp." });
 
-            var products = enterprise.Products?
+            var approvedProducts = GetApprovedProducts(enterprise).ToList();
+
+            var products = approvedProducts
                 .Select(p => new ProductMapDto
                 {
                     Id = p.Id,
@@ -430,9 +452,12 @@ namespace GiaLaiOCOP.Api.Controllers
                     OCOPRating = p.OCOPRating,
                     StockStatus = p.StockStatus,
                     AverageRating = CalculateAverageRating(p.Reviews),
-                    EnterpriseId = p.EnterpriseId
+                    EnterpriseId = p.EnterpriseId,
+                    Status = p.Status,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category?.Name
                 })
-                .ToList() ?? new List<ProductMapDto>();
+                .ToList();
 
             var total = products.Count;
             var pagedResults = products
@@ -495,6 +520,11 @@ namespace GiaLaiOCOP.Api.Controllers
         // 🔹 Helper Methods
         // ============================================
 
+        private IEnumerable<Product> GetApprovedProducts(Enterprise enterprise)
+        {
+            return (enterprise.Products ?? new List<Product>()).Where(p => p.Status == "Approved");
+        }
+
         /// <summary>
         /// Map Enterprise to EnterpriseMapDto với distance và directions URL
         /// </summary>
@@ -508,9 +538,10 @@ namespace GiaLaiOCOP.Api.Controllers
             }
 
             // Tính rating count
-            var ratingCount = enterprise.Products?
+            var approvedProducts = GetApprovedProducts(enterprise).ToList();
+            var ratingCount = approvedProducts
                 .SelectMany(p => p.Reviews)
-                .Count() ?? 0;
+                .Count();
 
             return new EnterpriseMapDto
             {
@@ -520,7 +551,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 Latitude = enterprise.Latitude,
                 Longitude = enterprise.Longitude,
                 ImageUrl = enterprise.ImageUrl,
-                AverageRating = CalculateAverageRating(enterprise.Products),
+                AverageRating = CalculateAverageRating(approvedProducts),
                 OCOPRating = enterprise.OCOPRating,
                 District = enterprise.District,
                 Province = enterprise.Province,
@@ -595,7 +626,14 @@ namespace GiaLaiOCOP.Api.Controllers
             if (products == null || !products.Any())
                 return null;
 
-            var allRatings = products
+            var approvedProducts = products
+                .Where(p => p.Status == "Approved")
+                .ToList();
+
+            if (!approvedProducts.Any())
+                return null;
+
+            var allRatings = approvedProducts
                 .SelectMany(p => p.Reviews)
                 .Select(r => (double)r.Rating)
                 .ToList();

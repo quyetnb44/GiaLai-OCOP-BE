@@ -14,6 +14,9 @@ namespace GiaLaiOCOP.Api.Dtos
         public string StockStatus { get; set; } = "InStock";
         public double? AverageRating { get; set; }
         public int EnterpriseId { get; set; }
+        public string Status { get; set; } = "PendingApproval";
+        public int? CategoryId { get; set; }
+        public string? CategoryName { get; set; }
     }
 }
 

@@ -145,8 +145,15 @@ namespace GiaLaiOCOP.Api.Controllers
                     continue;
 
                 // Tạo payment cho enterprise này
-                var payment = CreatePaymentForEnterprise(order, enterprise, amount, method);
-                createdPayments.Add(payment);
+                try
+                {
+                    var payment = CreatePaymentForEnterprise(order, enterprise, amount, method);
+                    createdPayments.Add(payment);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return BadRequest(new { Error = ex.Message });
+                }
             }
 
             if (!createdPayments.Any())

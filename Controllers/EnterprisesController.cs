@@ -23,7 +23,8 @@ namespace GiaLaiOCOP.Api.Controllers
         public async Task<ActionResult<IEnumerable<EnterpriseDto>>> GetEnterprises()
         {
             var enterprises = await _context.Enterprises
-                                            .Include(e => e.Products)
+                                            .Include(e => e.Products)!
+                                                .ThenInclude(p => p.Category)
                                             .Include(e => e.Users)
                                             .ToListAsync();
 
@@ -55,7 +56,12 @@ namespace GiaLaiOCOP.Api.Controllers
                     ImageUrl = p.ImageUrl,
                     OCOPRating = p.OCOPRating,
                     StockStatus = p.StockStatus,
-                    AverageRating = p.AverageRating
+                    AverageRating = p.AverageRating,
+                    Status = p.Status,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category?.Name,
+                    ApprovedAt = p.ApprovedAt,
+                    ApprovedByUserId = p.ApprovedByUserId
                 }).ToList(),
                 Users = (e.Users ?? new List<User>()).Select(u => new UserDto
                 {
@@ -73,7 +79,8 @@ namespace GiaLaiOCOP.Api.Controllers
         public async Task<ActionResult<EnterpriseDto>> GetEnterprise(int id)
         {
             var enterprise = await _context.Enterprises
-                                           .Include(e => e.Products)
+                                           .Include(e => e.Products)!
+                                                .ThenInclude(p => p.Category)
                                            .Include(e => e.Users)
                                            .FirstOrDefaultAsync(e => e.Id == id);
 
@@ -107,7 +114,12 @@ namespace GiaLaiOCOP.Api.Controllers
                     ImageUrl = p.ImageUrl,
                     OCOPRating = p.OCOPRating,
                     StockStatus = p.StockStatus,
-                    AverageRating = p.AverageRating
+                    AverageRating = p.AverageRating,
+                    Status = p.Status,
+                    CategoryId = p.CategoryId,
+                    CategoryName = p.Category?.Name,
+                    ApprovedAt = p.ApprovedAt,
+                    ApprovedByUserId = p.ApprovedByUserId
                 }).ToList(),
                 Users = (enterprise.Users ?? new List<User>()).Select(u => new UserDto
                 {

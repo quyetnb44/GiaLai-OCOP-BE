@@ -178,6 +178,9 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpPost]
         public async Task<ActionResult<OrderDto>> CreateOrder(CreateOrderDto dto)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
             var userId = await GetUserIdFromTokenAsync();
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
@@ -197,10 +200,39 @@ namespace GiaLaiOCOP.Api.Controllers
                     return BadRequest($"Số lượng sản phẩm ID {item.ProductId} phải lớn hơn 0.");
             }
 
-            var paymentMethod = string.IsNullOrWhiteSpace(dto.PaymentMethod) ? "COD" : dto.PaymentMethod.Trim();
-            paymentMethod = paymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase)
-                ? "BankTransfer"
-                : "COD";
+            var paymentMethod = NormalizePaymentMethod(dto.PaymentMethod);
+
+            var productIds = dto.Items.Select(i => i.ProductId).Distinct().ToList();
+            var products = await _context.Products
+                .Where(p => productIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id);
+
+            var orderItemsToCreate = new List<OrderItem>();
+            decimal total = 0;
+
+            foreach (var item in dto.Items)
+            {
+                if (!products.TryGetValue(item.ProductId, out var product))
+                {
+                    return BadRequest($"Sản phẩm ID {item.ProductId} không tồn tại.");
+                }
+
+                if (product.Status != "Approved")
+                    return BadRequest($"Sản phẩm '{product.Name}' (ID: {item.ProductId}) chưa được duyệt.");
+
+                if (product.StockStatus == "OutOfStock")
+                    return BadRequest($"Sản phẩm '{product.Name}' (ID: {item.ProductId}) đã hết hàng.");
+
+                var orderItem = new OrderItem
+                {
+                    ProductId = product.Id,
+                    Quantity = item.Quantity,
+                    Price = product.Price
+                };
+
+                orderItemsToCreate.Add(orderItem);
+                total += product.Price * item.Quantity;
+            }
 
             var order = new Order
             {
@@ -212,33 +244,28 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentStatus = "Pending" // Sẽ được cập nhật khi tạo Payment thực sự
             };
 
-            _context.Orders.Add(order);
-            await _context.SaveChangesAsync();
-
-            decimal total = 0;
-            foreach (var item in dto.Items)
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                var product = await _context.Products.FindAsync(item.ProductId);
-                if (product == null)
-                    return BadRequest($"Sản phẩm ID {item.ProductId} không tồn tại.");
+                _context.Orders.Add(order);
+                await _context.SaveChangesAsync();
 
-                // 🔹 Validation: Kiểm tra tình trạng hàng
-                if (product.StockStatus == "OutOfStock")
-                    return BadRequest($"Sản phẩm '{product.Name}' (ID: {item.ProductId}) đã hết hàng.");
-
-                var orderItem = new OrderItem
+                foreach (var orderItem in orderItemsToCreate)
                 {
-                    OrderId = order.Id,
-                    ProductId = item.ProductId,
-                    Quantity = item.Quantity,
-                    Price = product.Price // 🔹 Lưu giá tại thời điểm đặt hàng
-                };
-                total += product.Price * item.Quantity;
-                _context.OrderItems.Add(orderItem);
-            }
+                    orderItem.OrderId = order.Id;
+                    _context.OrderItems.Add(orderItem);
+                }
 
-            order.TotalAmount = total;
-            await _context.SaveChangesAsync();
+                order.TotalAmount = total;
+                await _context.SaveChangesAsync();
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
 
             // 🔹 Reload để lấy OrderItems và Payments đã lưu
             await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
@@ -274,6 +301,16 @@ namespace GiaLaiOCOP.Api.Controllers
             };
 
             return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, orderDto);
+        }
+
+        private static string NormalizePaymentMethod(string? paymentMethod)
+        {
+            if (string.IsNullOrWhiteSpace(paymentMethod))
+                return "COD";
+
+            return paymentMethod.Trim().Equals("BankTransfer", StringComparison.OrdinalIgnoreCase)
+                ? "BankTransfer"
+                : "COD";
         }
 
         // 🔹 PUT /api/orders/{id}/status - Cập nhật trạng thái đơn hàng

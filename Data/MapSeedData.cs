@@ -120,7 +120,9 @@ namespace GiaLaiOCOP.Api.Data
                     OCOPRating = 5,
                     StockStatus = "InStock",
                     ImageUrl = "https://example.com/images/cafe-hat.jpg",
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    Status = "Approved",
+                    ApprovedAt = DateTime.UtcNow
                 },
                 new Product
                 {
@@ -131,7 +133,9 @@ namespace GiaLaiOCOP.Api.Data
                     OCOPRating = 4,
                     StockStatus = "InStock",
                     ImageUrl = "https://example.com/images/cafe-phin.jpg",
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    Status = "Approved",
+                    ApprovedAt = DateTime.UtcNow
                 }
             };
 

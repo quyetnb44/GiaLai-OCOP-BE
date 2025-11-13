@@ -13,6 +13,11 @@ public class ProductDto
     public int? OCOPRating { get; set; }
     public string StockStatus { get; set; } = "InStock";
     public double? AverageRating { get; set; }
+    public string Status { get; set; } = "PendingApproval";
+    public int? CategoryId { get; set; }
+    public string? CategoryName { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+    public int? ApprovedByUserId { get; set; }
 
     // Thêm property Enterprise để có thể dùng trong DTO
     public EnterpriseDto? Enterprise { get; set; }
