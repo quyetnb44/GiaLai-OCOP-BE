@@ -47,8 +47,15 @@ builder.Services.AddCors(options =>
 // 🔹 Add Email Service
 builder.Services.AddScoped<IEmailService, EmailService>();
 
-// 🔹 Add Controllers và Swagger
-builder.Services.AddControllers();
+// 🔹 Add Controllers và Swagger với JSON options
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Đảm bảo property names được convert sang camelCase
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        // Đảm bảo boolean values được serialize (kể cả false)
+        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {

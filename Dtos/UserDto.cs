@@ -8,4 +8,5 @@ public class UserDto
     public string Role { get; set; } = "";            // thêm Role
     public int? EnterpriseId { get; set; }            // thêm EnterpriseId (nullable)
     public EnterpriseDto? Enterprise { get; set; }    // thêm Enterprise (nullable)
+    public bool IsEmailVerified { get; set; } = false; // Trạng thái xác thực email
 }

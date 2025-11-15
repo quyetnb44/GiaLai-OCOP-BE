@@ -67,7 +67,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 {
                     Id = u.Id,
                     Name = u.Name,
-                    Email = u.Email
+                    Email = u.Email,
+                    IsEmailVerified = u.IsEmailVerified
                 }).ToList()
             }).ToList();
 
@@ -125,7 +126,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 {
                     Id = u.Id,
                     Name = u.Name,
-                    Email = u.Email
+                    Email = u.Email,
+                    IsEmailVerified = u.IsEmailVerified
                 }).ToList()
             };
 
