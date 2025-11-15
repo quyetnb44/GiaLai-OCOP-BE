@@ -21,6 +21,7 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<EnterpriseApplication> EnterpriseApplications { get; set; }
         public DbSet<Payment> Payments { get; set; }
         public DbSet<Category> Categories { get; set; }
+        public DbSet<EmailVerification> EmailVerifications { get; set; }
 
 
 

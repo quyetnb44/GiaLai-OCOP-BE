@@ -22,6 +22,9 @@ namespace GiaLaiOCOP.Api.Models
         // Ngày tạo tài khoản
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        // Xác thực email
+        public bool IsEmailVerified { get; set; } = false;
+
         // Quan hệ: 1 user có thể có nhiều đơn hàng
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON
         public ICollection<Order> Orders { get; set; } = new List<Order>();

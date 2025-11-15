@@ -44,6 +44,9 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod());
 });
 
+// 🔹 Add Email Service
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 // 🔹 Add Controllers và Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
