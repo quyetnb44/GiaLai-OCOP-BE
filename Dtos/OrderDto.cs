@@ -15,6 +15,12 @@ namespace GiaLaiOCOP.Api.Dtos
         public string PaymentStatus { get; set; } = string.Empty;
         public string? PaymentReference { get; set; }
 
+        // 🔹 Thông tin giao hàng
+        public int? ShipperId { get; set; }
+        public DateTime? ShippedAt { get; set; }
+        public DateTime? DeliveredAt { get; set; }
+        public string? DeliveryNotes { get; set; }
+
         // Danh sách chi tiết đơn hàng (có thể null nếu chỉ lấy đơn)
         public List<OrderItemDto>? OrderItems { get; set; }
 

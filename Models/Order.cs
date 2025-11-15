@@ -19,6 +19,12 @@ namespace GiaLaiOCOP.Api.Models
 
         public string? ShippingAddress { get; set; }
 
+        // 🔹 Thông tin giao hàng
+        public int? ShipperId { get; set; } // Người giao hàng (Shipper)
+        public DateTime? ShippedAt { get; set; } // Thời điểm giao hàng
+        public DateTime? DeliveredAt { get; set; } // Thời điểm giao hàng thành công
+        public string? DeliveryNotes { get; set; } // Ghi chú giao hàng
+
         // 🔹 Thông tin thanh toán
         public string PaymentMethod { get; set; } = "COD"; // COD, BankTransfer
         public string PaymentStatus { get; set; } = "Pending"; // Pending, AwaitingTransfer, Paid, PartiallyPaid, Cancelled

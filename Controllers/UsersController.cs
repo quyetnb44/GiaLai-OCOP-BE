@@ -45,6 +45,51 @@ namespace GiaLaiOCOP.Api.Controllers
             return Ok(usersDto);
         }
 
+        // 🔹 GET: api/users/me - Lấy thông tin user hiện tại
+        [HttpGet("me")]
+        public async Task<ActionResult<UserDto>> GetCurrentUser()
+        {
+            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            int? currentUserId = null;
+            if (!string.IsNullOrWhiteSpace(claimValue))
+            {
+                if (int.TryParse(claimValue, out var userId))
+                    currentUserId = userId;
+                else if (claimValue.Contains("@"))
+                {
+                    var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
+                    currentUserId = currentUser?.Id;
+                }
+            }
+
+            if (currentUserId == null) return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var user = await _context.Users
+                .Include(u => u.Enterprise)
+                .FirstOrDefaultAsync(u => u.Id == currentUserId.Value);
+
+            if (user == null) return NotFound();
+
+            var userDto = new UserDto
+            {
+                Id = user.Id,
+                Name = user.Name,
+                Email = user.Email,
+                Role = user.Role,
+                EnterpriseId = user.EnterpriseId,
+                Enterprise = user.Enterprise == null ? null : new EnterpriseDto
+                {
+                    Id = user.Enterprise.Id,
+                    Name = user.Enterprise.Name,
+                    Description = user.Enterprise.Description
+                }
+            };
+
+            return Ok(userDto);
+        }
+
         // 🔹 GET: api/users/{id}
         // SystemAdmin xem tất cả, Customer/EnterpriseAdmin xem chính mình
         [HttpGet("{id}")]
@@ -175,6 +220,77 @@ namespace GiaLaiOCOP.Api.Controllers
             };
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, userDto);
+        }
+
+        // 🔹 PUT: api/users/me - User tự cập nhật profile
+        [HttpPut("me")]
+        public async Task<ActionResult<UserDto>> UpdateCurrentUser([FromBody] UpdateUserProfileDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            int? currentUserId = null;
+            if (!string.IsNullOrWhiteSpace(claimValue))
+            {
+                if (int.TryParse(claimValue, out var userId))
+                    currentUserId = userId;
+                else if (claimValue.Contains("@"))
+                {
+                    var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
+                    currentUserId = currentUser?.Id;
+                }
+            }
+
+            if (currentUserId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var user = await _context.Users
+                .Include(u => u.Enterprise)
+                .FirstOrDefaultAsync(u => u.Id == currentUserId.Value);
+
+            if (user == null)
+                return NotFound();
+
+            // Cập nhật tên
+            user.Name = dto.Name.Trim();
+
+            // Cập nhật email nếu có và khác email hiện tại
+            if (!string.IsNullOrWhiteSpace(dto.Email) && dto.Email.Trim().ToLower() != user.Email.ToLower())
+            {
+                var newEmail = dto.Email.Trim().ToLower();
+                if (await _context.Users.AnyAsync(u => u.Email == newEmail && u.Id != user.Id))
+                    return Conflict("Email đã được sử dụng bởi người dùng khác.");
+
+                user.Email = newEmail;
+            }
+
+            // Cập nhật mật khẩu nếu có
+            if (!string.IsNullOrWhiteSpace(dto.Password))
+            {
+                user.Password = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+            }
+
+            await _context.SaveChangesAsync();
+
+            var userDto = new UserDto
+            {
+                Id = user.Id,
+                Name = user.Name,
+                Email = user.Email,
+                Role = user.Role,
+                EnterpriseId = user.EnterpriseId,
+                Enterprise = user.Enterprise == null ? null : new EnterpriseDto
+                {
+                    Id = user.Enterprise.Id,
+                    Name = user.Enterprise.Name,
+                    Description = user.Enterprise.Description
+                }
+            };
+
+            return Ok(userDto);
         }
 
         // 🔹 PUT: api/users/{id} - Chỉ SystemAdmin

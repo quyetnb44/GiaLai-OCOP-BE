@@ -99,6 +99,10 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentMethod = o.PaymentMethod,
                 PaymentStatus = o.PaymentStatus,
                 PaymentReference = o.PaymentReference,
+                ShipperId = o.ShipperId,
+                ShippedAt = o.ShippedAt,
+                DeliveredAt = o.DeliveredAt,
+                DeliveryNotes = o.DeliveryNotes,
                 OrderItems = o.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
@@ -159,6 +163,10 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentMethod = order.PaymentMethod,
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
+                ShipperId = order.ShipperId,
+                ShippedAt = order.ShippedAt,
+                DeliveredAt = order.DeliveredAt,
+                DeliveryNotes = order.DeliveryNotes,
                 OrderItems = order.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
@@ -289,6 +297,10 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentMethod = order.PaymentMethod,
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
+                ShipperId = order.ShipperId,
+                ShippedAt = order.ShippedAt,
+                DeliveredAt = order.DeliveredAt,
+                DeliveryNotes = order.DeliveryNotes,
                 OrderItems = order.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
@@ -373,6 +385,37 @@ namespace GiaLaiOCOP.Api.Controllers
             return NoContent();
         }
 
+        // 🔹 PUT /api/orders/{id}/shipping-address - Cập nhật địa chỉ giao hàng
+        [HttpPut("{id}/shipping-address")]
+        public async Task<IActionResult> UpdateShippingAddress(int id, [FromBody] UpdateShippingAddressDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null)
+                return NotFound("Không tìm thấy đơn hàng.");
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            // Chỉ Customer mới được cập nhật địa chỉ giao hàng của đơn hàng của mình
+            if (role != "Customer" || order.UserId != userId.Value)
+                return Forbid("Bạn chỉ có thể cập nhật địa chỉ giao hàng của đơn hàng của chính mình.");
+
+            // Chỉ cho phép cập nhật khi đơn hàng còn ở trạng thái Pending hoặc Processing
+            if (order.Status != "Pending" && order.Status != "Processing")
+                return BadRequest("Chỉ có thể cập nhật địa chỉ giao hàng khi đơn hàng ở trạng thái Pending hoặc Processing.");
+
+            order.ShippingAddress = dto.ShippingAddress.Trim();
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
         // 🔹 DELETE /api/orders/{id} - Xóa đơn hàng
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteOrder(int id)
@@ -395,9 +438,9 @@ namespace GiaLaiOCOP.Api.Controllers
                 if (order.UserId != userId.Value)
                     return Forbid("Bạn chỉ có thể xóa đơn hàng của chính mình.");
 
-                // Customer chỉ có thể xóa đơn ở trạng thái Pending
-                if (order.Status != "Pending")
-                    return BadRequest("Chỉ có thể xóa đơn hàng ở trạng thái Pending.");
+                // Customer có thể xóa đơn ở trạng thái Pending hoặc Cancelled
+                if (order.Status != "Pending" && order.Status != "Cancelled")
+                    return BadRequest("Chỉ có thể xóa đơn hàng ở trạng thái Pending hoặc Cancelled.");
             }
             else if (role == "EnterpriseAdmin")
             {

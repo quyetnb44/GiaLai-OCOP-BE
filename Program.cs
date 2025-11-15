@@ -91,6 +91,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAll");
+
+// 🔹 Serve static files (uploads/images)
+app.UseStaticFiles();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
