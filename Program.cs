@@ -47,8 +47,15 @@ builder.Services.AddCors(options =>
 // 🔹 Add Email Service
 builder.Services.AddScoped<IEmailService, EmailService>();
 
-// 🔹 Add Controllers và Swagger
-builder.Services.AddControllers();
+// 🔹 Add Controllers và Swagger với JSON options
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Đảm bảo property names được convert sang camelCase
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        // Đảm bảo boolean values được serialize (kể cả false)
+        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -145,14 +152,30 @@ using (var scope = app.Services.CreateScope())
             Name = "System Administrator",
             Email = "admin@system.com",
             Password = BCrypt.Net.BCrypt.HashPassword("123456"),
-            Role = "SystemAdmin"
+            Role = "SystemAdmin",
+            IsEmailVerified = true // SystemAdmin mặc định đã verify
         };
         db.Users.Add(sysAdmin);
         db.SaveChanges();
         Console.WriteLine("SystemAdmin mặc định đã được tạo: admin@system.com / 123456");
     }
 
-    // 4️⃣ Seed dữ liệu mẫu cho Map (chỉ trong Development)
+    // 4️⃣ Cập nhật IsEmailVerified = true cho user cũ (tạo trước khi có tính năng xác thực email)
+    var usersNotVerified = db.Users
+        .Where(u => !u.IsEmailVerified)
+        .ToList();
+
+    if (usersNotVerified.Any())
+    {
+        foreach (var user in usersNotVerified)
+        {
+            user.IsEmailVerified = true;
+        }
+        db.SaveChanges();
+        Console.WriteLine($"Đã cập nhật IsEmailVerified = true cho {usersNotVerified.Count} user cũ.");
+    }
+
+    // 5️⃣ Seed dữ liệu mẫu cho Map (chỉ trong Development)
     if (app.Environment.IsDevelopment())
     {
         MapSeedData.SeedMapData(db);

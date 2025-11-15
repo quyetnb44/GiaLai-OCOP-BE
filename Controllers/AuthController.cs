@@ -49,22 +49,61 @@ namespace GiaLaiOCOP.Api.Controllers
             await _context.SaveChangesAsync();
         }
 
-        // 🔹 POST /api/auth/register - ĐĂNG KÝ (DEPRECATED - Dùng register-with-otp thay thế)
-        // ⚠️ Endpoint này đã bị vô hiệu hóa. Vui lòng sử dụng POST /api/auth/register-with-otp để đăng ký với xác thực email.
+        // 🔹 POST /api/auth/register - ĐĂNG KÝ (Không cần OTP)
         [HttpPost("register")]
-        public Task<IActionResult> Register([FromBody] RegisterDto dto)
+        public async Task<IActionResult> Register([FromBody] RegisterDto dto)
         {
-            return Task.FromResult<IActionResult>(BadRequest(new 
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLower();
+
+            // Kiểm tra email đã tồn tại
+            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == email))
+                return Conflict("Email đã được sử dụng.");
+
+            // Tạo user mới (không cần OTP, IsEmailVerified = false)
+            var user = new User
+            {
+                Name = dto.Name.Trim(),
+                Email = email,
+                Password = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                Role = "Customer",
+                IsEmailVerified = false // Không bắt buộc xác thực email
+            };
+
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            // Tạo JWT token cho user mới đăng ký
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Name, user.Name),
+                new Claim(ClaimTypes.Role, user.Role ?? "Customer")
+            };
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var expires = DateTime.UtcNow.AddMinutes(int.Parse(_config["Jwt:TokenLifetimeMinutes"] ?? "60"));
+
+            var token = new JwtSecurityToken(
+                issuer: _config["Jwt:Issuer"],
+                audience: _config["Jwt:Audience"],
+                claims: claims,
+                expires: expires,
+                signingCredentials: creds
+            );
+
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+            return CreatedAtAction(nameof(Register), new { id = user.Id }, new AuthResponseDto 
             { 
-                message = "Đăng ký phải thông qua xác thực email bằng OTP.",
-                instruction = "Vui lòng sử dụng endpoint POST /api/auth/register-with-otp",
-                steps = new[]
-                {
-                    "1. Gọi POST /api/auth/send-otp với purpose: 'Register'",
-                    "2. Nhập mã OTP từ email",
-                    "3. Gọi POST /api/auth/register-with-otp với thông tin đăng ký + OTP"
-                }
-            }));
+                Token = tokenString, 
+                Expires = expires,
+                Message = "Đăng ký thành công."
+            });
         }
 
         [HttpPost("login")]
@@ -82,16 +121,8 @@ namespace GiaLaiOCOP.Api.Controllers
             if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.Password))
                 return Unauthorized("Email hoặc mật khẩu không đúng.");
 
-            // 🔹 Kiểm tra email đã được xác thực chưa
-            if (!user.IsEmailVerified)
-            {
-                return Unauthorized(new 
-                { 
-                    message = "Email chưa được xác thực. Vui lòng xác thực email trước khi đăng nhập.",
-                    isEmailVerified = false,
-                    instruction = "Gọi POST /api/auth/resend-verification-otp để nhận mã OTP xác thực email"
-                });
-            }
+            // 🔹 Bỏ kiểm tra email verification - cho phép đăng nhập dù email chưa xác thực
+            // Email verification chỉ là optional, không bắt buộc để đăng nhập
 
             // tạo claims
             var claims = new List<Claim>
