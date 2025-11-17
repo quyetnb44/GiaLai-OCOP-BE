@@ -9,12 +9,12 @@ namespace GiaLaiOCOP.Api.Models
         public int OrderId { get; set; }
 
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON
-        public Order Order { get; set; }
+        public Order Order { get; set; } = null!;
 
         public int ProductId { get; set; }
 
         [JsonIgnore] // 🔥 Nếu Product có liên kết ngược đến OrderItem thì cũng nên bỏ qua
-        public Product Product { get; set; }
+        public Product Product { get; set; } = null!;
 
         public int Quantity { get; set; }
 

@@ -5,8 +5,8 @@ namespace GiaLaiOCOP.Api.Models
     public class Product
     {
         public int Id { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
         public decimal Price { get; set; }
         
         // 🔹 Thông tin OCOP và hình ảnh
@@ -22,7 +22,7 @@ namespace GiaLaiOCOP.Api.Models
         
         // Doanh nghiệp sở hữu sản phẩm
         public int EnterpriseId { get; set; }
-        public Enterprise Enterprise { get; set; }
+        public Enterprise Enterprise { get; set; } = null!;
 
         public int? CategoryId { get; set; }
         public Category? Category { get; set; }

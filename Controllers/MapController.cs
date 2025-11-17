@@ -353,7 +353,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             var featuredProducts = approvedProducts
                 .OrderByDescending(p => p.OCOPRating ?? 0)
-                .ThenByDescending(p => CalculateAverageRating(p.Reviews) ?? 0)
+                .ThenByDescending(p => p.AverageRating ?? 0) // 🔹 Sử dụng AverageRating từ database
                 .Take(3)
                 .Select(p => new ProductMapDto
                 {
@@ -364,7 +364,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     ImageUrl = p.ImageUrl,
                     OCOPRating = p.OCOPRating,
                     StockStatus = p.StockStatus,
-                    AverageRating = CalculateAverageRating(p.Reviews),
+                    AverageRating = p.AverageRating, // 🔹 Lấy từ database
                     EnterpriseId = p.EnterpriseId,
                     Status = p.Status,
                     CategoryId = p.CategoryId,
@@ -399,7 +399,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 EmailContact = enterprise.EmailContact,
                 Website = enterprise.Website,
                 ImageUrl = enterprise.ImageUrl,
-                AverageRating = CalculateAverageRating(approvedProducts),
+                AverageRating = enterprise.AverageRating, // 🔹 Lấy từ database
                 OCOPRating = enterprise.OCOPRating,
                 BusinessField = enterprise.BusinessField,
                 FeaturedProducts = featuredProducts,
@@ -451,7 +451,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     ImageUrl = p.ImageUrl,
                     OCOPRating = p.OCOPRating,
                     StockStatus = p.StockStatus,
-                    AverageRating = CalculateAverageRating(p.Reviews),
+                    AverageRating = p.AverageRating, // 🔹 Lấy từ database
                     EnterpriseId = p.EnterpriseId,
                     Status = p.Status,
                     CategoryId = p.CategoryId,
@@ -507,12 +507,26 @@ namespace GiaLaiOCOP.Api.Controllers
                 .OrderBy(b => b)
                 .ToList();
 
+            // 🔹 Lấy OCOPRatings từ database thay vì hardcode
+            var ocopRatings = enterprises
+                .Where(e => e.OCOPRating.HasValue)
+                .Select(e => e.OCOPRating!.Value)
+                .Distinct()
+                .OrderBy(r => r)
+                .ToList();
+
+            // Nếu không có dữ liệu, trả về giá trị mặc định
+            if (!ocopRatings.Any())
+            {
+                ocopRatings = new List<int> { 3, 4, 5 };
+            }
+
             return Ok(new FilterOptionsDto
             {
                 Districts = districts,
                 Provinces = provinces,
                 BusinessFields = businessFields,
-                OCOPRatings = new List<int> { 3, 4, 5 }
+                OCOPRatings = ocopRatings // 🔹 Lấy từ database
             });
         }
 
@@ -551,7 +565,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 Latitude = enterprise.Latitude,
                 Longitude = enterprise.Longitude,
                 ImageUrl = enterprise.ImageUrl,
-                AverageRating = CalculateAverageRating(approvedProducts),
+                AverageRating = enterprise.AverageRating, // 🔹 Lấy từ database
                 OCOPRating = enterprise.OCOPRating,
                 District = enterprise.District,
                 Province = enterprise.Province,
@@ -619,7 +633,7 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         /// <summary>
-        /// Tính điểm đánh giá trung bình từ Reviews của các sản phẩm
+        /// Tính điểm đánh giá trung bình từ AverageRating của các sản phẩm (đã lưu trong database)
         /// </summary>
         private double? CalculateAverageRating(ICollection<Product>? products)
         {
@@ -627,32 +641,14 @@ namespace GiaLaiOCOP.Api.Controllers
                 return null;
 
             var approvedProducts = products
-                .Where(p => p.Status == "Approved")
+                .Where(p => p.Status == "Approved" && p.AverageRating.HasValue)
                 .ToList();
 
             if (!approvedProducts.Any())
                 return null;
 
-            var allRatings = approvedProducts
-                .SelectMany(p => p.Reviews)
-                .Select(r => (double)r.Rating)
-                .ToList();
-
-            if (!allRatings.Any())
-                return null;
-
-            return Math.Round(allRatings.Average(), 2);
-        }
-
-        /// <summary>
-        /// Tính điểm đánh giá trung bình từ Reviews của 1 sản phẩm
-        /// </summary>
-        private double? CalculateAverageRating(ICollection<Review>? reviews)
-        {
-            if (reviews == null || !reviews.Any())
-                return null;
-
-            return Math.Round(reviews.Average(r => (double)r.Rating), 2);
+            // 🔹 Sử dụng AverageRating từ database thay vì tính toán từ Reviews
+            return Math.Round(approvedProducts.Average(p => p.AverageRating!.Value), 2);
         }
 
         /// <summary>

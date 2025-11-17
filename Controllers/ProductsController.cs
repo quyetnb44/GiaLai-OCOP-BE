@@ -298,12 +298,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
         private static ProductDto MapProductToDto(Product product)
         {
-            double? averageRating = null;
-            if (product.Reviews != null && product.Reviews.Any())
-            {
-                averageRating = product.Reviews.Average(r => (double)r.Rating);
-            }
-
+            // 🔹 Sử dụng AverageRating từ database thay vì tính toán động
             return new ProductDto
             {
                 Id = product.Id,
@@ -314,7 +309,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 ImageUrl = product.ImageUrl,
                 OCOPRating = product.OCOPRating,
                 StockStatus = product.StockStatus,
-                AverageRating = averageRating,
+                AverageRating = product.AverageRating, // 🔹 Lấy từ database
                 Status = product.Status,
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category?.Name,

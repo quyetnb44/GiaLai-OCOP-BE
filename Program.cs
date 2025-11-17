@@ -2,6 +2,7 @@
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Services;
 using GiaLaiOCOP.Api.Options;
+using GiaLaiOCOP.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -23,6 +24,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         var jwtSettings = builder.Configuration.GetSection("Jwt");
+        var jwtKey = jwtSettings["Key"];
+        if (string.IsNullOrWhiteSpace(jwtKey))
+        {
+            throw new InvalidOperationException("JWT key is not configured.");
+        }
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -31,21 +37,40 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtSettings["Issuer"],
             ValidAudience = jwtSettings["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 // 🔹 Add CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod());
+    if (builder.Environment.IsDevelopment())
+    {
+        // Development: Cho phép tất cả origins
+        options.AddPolicy("AllowAll", policy =>
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod());
+    }
+    else
+    {
+        // Production: Chỉ cho phép origins cụ thể
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+                           ?? new[] { "https://yourdomain.com" };
+        
+        options.AddPolicy("AllowAll", policy =>
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials());
+    }
 });
 
 // 🔹 Add Email Service
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// 🔹 Add Rating Service
+builder.Services.AddScoped<GiaLaiOCOP.Api.Services.IRatingService, GiaLaiOCOP.Api.Services.RatingService>();
 
 // 🔹 Add HttpClient for external API calls (Vietnam Address API)
 builder.Services.AddHttpClient();
@@ -93,6 +118,10 @@ builder.Services.AddSwaggerGen(c =>
 // 🔹 Configure BankTransfer settings
 builder.Services.Configure<BankTransferSettings>(builder.Configuration.GetSection("BankTransfer"));
 
+// 🔹 Add Health Checks
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>("database");
+
 
 var app = builder.Build();
 
@@ -103,6 +132,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// 🔹 Global Exception Handler (phải đặt trước các middleware khác)
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+
 app.UseCors("AllowAll");
 
 // 🔹 Serve static files (uploads/images)
@@ -112,6 +144,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// 🔹 Health Check endpoint
+app.MapHealthChecks("/health");
 // 🔹 Khởi tạo dữ liệu mặc định
 using (var scope = app.Services.CreateScope())
 {
@@ -183,5 +218,10 @@ using (var scope = app.Services.CreateScope())
     {
         MapSeedData.SeedMapData(db);
     }
+
+    // 6️⃣ Cập nhật AverageRating cho dữ liệu hiện có (chỉ chạy 1 lần khi deploy)
+    // Uncomment 2 dòng dưới để chạy script cập nhật AverageRating cho dữ liệu hiện có
+    // var ratingService = scope.ServiceProvider.GetRequiredService<GiaLaiOCOP.Api.Services.IRatingService>();
+    // await GiaLaiOCOP.Api.Scripts.UpdateAverageRatingsScript.RunAsync(db, ratingService);
 }
 app.Run();

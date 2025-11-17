@@ -9,7 +9,6 @@ namespace GiaLaiOCOP.Api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "SystemAdmin,EnterpriseAdmin")]
     public class CategoriesController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -19,6 +18,8 @@ namespace GiaLaiOCOP.Api.Controllers
             _context = context;
         }
 
+        // 🔹 GET: api/categories - Cho phép tất cả người dùng xem (công khai)
+        [AllowAnonymous]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<CategoryDto>>> GetCategories([FromQuery] bool? isActive = null)
         {
@@ -42,6 +43,8 @@ namespace GiaLaiOCOP.Api.Controllers
             return Ok(categories);
         }
 
+        // 🔹 GET: api/categories/{id} - Cho phép tất cả người dùng xem (công khai)
+        [AllowAnonymous]
         [HttpGet("{id}")]
         public async Task<ActionResult<CategoryDto>> GetCategory(int id)
         {
@@ -58,6 +61,8 @@ namespace GiaLaiOCOP.Api.Controllers
             });
         }
 
+        // 🔹 POST: api/categories - Chỉ SystemAdmin mới được tạo category
+        [Authorize(Roles = "SystemAdmin")]
         [HttpPost]
         public async Task<ActionResult<CategoryDto>> CreateCategory([FromBody] CreateCategoryDto dto)
         {
@@ -90,6 +95,8 @@ namespace GiaLaiOCOP.Api.Controllers
             return CreatedAtAction(nameof(GetCategory), new { id = category.Id }, categoryDto);
         }
 
+        // 🔹 PUT: api/categories/{id} - Chỉ SystemAdmin mới được cập nhật category
+        [Authorize(Roles = "SystemAdmin")]
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateCategory(int id, [FromBody] CreateCategoryDto dto)
         {
@@ -113,6 +120,8 @@ namespace GiaLaiOCOP.Api.Controllers
             return NoContent();
         }
 
+        // 🔹 DELETE: api/categories/{id} - Chỉ SystemAdmin mới được xóa category
+        [Authorize(Roles = "SystemAdmin")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteCategory(int id)
         {

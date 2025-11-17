@@ -83,35 +83,54 @@ namespace GiaLaiOCOP.Api.Controllers
             }
 
             var orders = await query
+                .Include(o => o.ShippingAddressDetail) // 🔹 Load ShippingAddressDetail từ database
                 .Include(o => o.Payments)
                     .ThenInclude(p => p.Enterprise)
                 .ToListAsync();
             
             // Map sang DTOs
-            var orderDtos = orders.Select(o => new OrderDto
+            var orderDtos = orders.Select(o =>
             {
-                Id = o.Id,
-                UserId = o.UserId,
-                OrderDate = o.OrderDate,
-                ShippingAddress = o.ShippingAddress,
-                TotalAmount = o.TotalAmount,
-                Status = o.Status,
-                PaymentMethod = o.PaymentMethod,
-                PaymentStatus = o.PaymentStatus,
-                PaymentReference = o.PaymentReference,
-                ShipperId = o.ShipperId,
-                ShippedAt = o.ShippedAt,
-                DeliveredAt = o.DeliveredAt,
-                DeliveryNotes = o.DeliveryNotes,
-                OrderItems = o.OrderItems.Select(oi => new OrderItemDto
+                // 🔹 Lấy địa chỉ từ ShippingAddressDetail hoặc ShippingAddress (string)
+                string? shippingAddress = null;
+                if (o.ShippingAddressId.HasValue && o.ShippingAddressDetail != null)
                 {
-                    Id = oi.Id,
-                    OrderId = oi.OrderId,
-                    ProductId = oi.ProductId,
-                    Quantity = oi.Quantity,
-                    Price = oi.Price
-                }).ToList(),
-                Payments = o.Payments.Select(MapPaymentToDto).ToList()
+                    // 🔹 Lấy địa chỉ từ ShippingAddressDetail (từ database)
+                    var addr = o.ShippingAddressDetail;
+                    shippingAddress = $"{addr.FullName}, {addr.PhoneNumber}, {addr.AddressLine}, {addr.Ward}, {addr.District}, {addr.Province}";
+                }
+                else
+                {
+                    // 🔹 Lấy địa chỉ từ ShippingAddress (string) - backward compatibility
+                    shippingAddress = o.ShippingAddress;
+                }
+
+                return new OrderDto
+                {
+                    Id = o.Id,
+                    UserId = o.UserId,
+                    OrderDate = o.OrderDate,
+                    ShippingAddress = shippingAddress, // 🔹 Lấy từ database hoặc string
+                    ShippingAddressId = o.ShippingAddressId, // 🔹 ID địa chỉ từ database
+                    TotalAmount = o.TotalAmount,
+                    Status = o.Status,
+                    PaymentMethod = o.PaymentMethod,
+                    PaymentStatus = o.PaymentStatus,
+                    PaymentReference = o.PaymentReference,
+                    ShipperId = o.ShipperId,
+                    ShippedAt = o.ShippedAt,
+                    DeliveredAt = o.DeliveredAt,
+                    DeliveryNotes = o.DeliveryNotes,
+                    OrderItems = o.OrderItems.Select(oi => new OrderItemDto
+                    {
+                        Id = oi.Id,
+                        OrderId = oi.OrderId,
+                        ProductId = oi.ProductId,
+                        Quantity = oi.Quantity,
+                        Price = oi.Price
+                    }).ToList(),
+                    Payments = o.Payments.Select(MapPaymentToDto).ToList()
+                };
             });
 
             return Ok(orderDtos);
@@ -126,6 +145,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             var order = await _context.Orders
+                .Include(o => o.ShippingAddressDetail) // 🔹 Load ShippingAddressDetail từ database
                 .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
                 .Include(o => o.Payments)
                     .ThenInclude(p => p.Enterprise)
@@ -152,12 +172,27 @@ namespace GiaLaiOCOP.Api.Controllers
             }
             // SystemAdmin có thể xem tất cả, không cần check
 
+            // 🔹 Lấy địa chỉ từ ShippingAddressDetail hoặc ShippingAddress (string)
+            string? shippingAddress = null;
+            if (order.ShippingAddressId.HasValue && order.ShippingAddressDetail != null)
+            {
+                // 🔹 Lấy địa chỉ từ ShippingAddressDetail (từ database)
+                var addr = order.ShippingAddressDetail;
+                shippingAddress = $"{addr.FullName}, {addr.PhoneNumber}, {addr.AddressLine}, {addr.Ward}, {addr.District}, {addr.Province}";
+            }
+            else
+            {
+                // 🔹 Lấy địa chỉ từ ShippingAddress (string) - backward compatibility
+                shippingAddress = order.ShippingAddress;
+            }
+
             var orderDto = new OrderDto
             {
                 Id = order.Id,
                 UserId = order.UserId,
                 OrderDate = order.OrderDate,
-                ShippingAddress = order.ShippingAddress,
+                ShippingAddress = shippingAddress, // 🔹 Lấy từ database hoặc string
+                ShippingAddressId = order.ShippingAddressId, // 🔹 ID địa chỉ từ database
                 TotalAmount = order.TotalAmount,
                 Status = order.Status,
                 PaymentMethod = order.PaymentMethod,
@@ -193,9 +228,19 @@ namespace GiaLaiOCOP.Api.Controllers
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
-            // 🔹 Validation: ShippingAddress
-            if (string.IsNullOrEmpty(dto.ShippingAddress))
-                return BadRequest("Địa chỉ giao hàng là bắt buộc.");
+            // 🔹 Validation: ShippingAddress hoặc ShippingAddressId
+            if (!dto.ShippingAddressId.HasValue && string.IsNullOrEmpty(dto.ShippingAddress))
+                return BadRequest("Địa chỉ giao hàng là bắt buộc. Vui lòng cung cấp ShippingAddressId hoặc ShippingAddress.");
+
+            // 🔹 Nếu có ShippingAddressId, kiểm tra xem địa chỉ có tồn tại và thuộc về user hiện tại không
+            if (dto.ShippingAddressId.HasValue)
+            {
+                var shippingAddress = await _context.ShippingAddresses
+                    .FirstOrDefaultAsync(sa => sa.Id == dto.ShippingAddressId.Value && sa.UserId == userId.Value);
+                
+                if (shippingAddress == null)
+                    return BadRequest("Địa chỉ giao hàng không tồn tại hoặc không thuộc về bạn.");
+            }
 
             // 🔹 Validation: Items không rỗng
             if (dto.Items == null || dto.Items.Count == 0)
@@ -245,7 +290,8 @@ namespace GiaLaiOCOP.Api.Controllers
             var order = new Order
             {
                 UserId = userId.Value,
-                ShippingAddress = dto.ShippingAddress,
+                ShippingAddressId = dto.ShippingAddressId, // 🔹 Lưu ShippingAddressId nếu có
+                ShippingAddress = dto.ShippingAddressId.HasValue ? null : dto.ShippingAddress, // 🔹 Chỉ lưu string nếu không có ShippingAddressId
                 OrderDate = DateTime.UtcNow,
                 Status = "Pending",
                 PaymentMethod = paymentMethod,

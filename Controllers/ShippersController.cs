@@ -54,6 +54,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
             IQueryable<Order> query = _context.Orders
+                .Include(o => o.ShippingAddressDetail) // 🔹 Load ShippingAddressDetail từ database
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                 .Include(o => o.Payments)
@@ -85,7 +86,9 @@ namespace GiaLaiOCOP.Api.Controllers
                 Id = o.Id,
                 UserId = o.UserId,
                 OrderDate = o.OrderDate,
-                ShippingAddress = o.ShippingAddress,
+                ShippingAddress = o.ShippingAddressId.HasValue && o.ShippingAddressDetail != null
+                    ? $"{o.ShippingAddressDetail.FullName}, {o.ShippingAddressDetail.PhoneNumber}, {o.ShippingAddressDetail.AddressLine}, {o.ShippingAddressDetail.Ward}, {o.ShippingAddressDetail.District}, {o.ShippingAddressDetail.Province}"
+                    : o.ShippingAddress, // 🔹 Lấy từ database hoặc string
                 TotalAmount = o.TotalAmount,
                 Status = o.Status,
                 PaymentMethod = o.PaymentMethod,

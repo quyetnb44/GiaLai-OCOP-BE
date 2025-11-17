@@ -49,6 +49,16 @@ namespace GiaLaiOCOP.Api.Controllers
             await _context.SaveChangesAsync();
         }
 
+        private string GetJwtKey()
+        {
+            var key = _config["Jwt:Key"];
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new InvalidOperationException("JWT key is not configured.");
+            }
+            return key;
+        }
+
         // 🔹 POST /api/auth/register - ĐĂNG KÝ (Không cần OTP)
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterDto dto)
@@ -84,7 +94,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 new Claim(ClaimTypes.Role, user.Role ?? "Customer")
             };
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(GetJwtKey()));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
             var expires = DateTime.UtcNow.AddMinutes(int.Parse(_config["Jwt:TokenLifetimeMinutes"] ?? "60"));
 
@@ -133,7 +143,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 new Claim(ClaimTypes.Role, user.Role ?? "Customer")
             };
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(GetJwtKey()));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var expires = DateTime.UtcNow.AddMinutes(int.Parse(_config["Jwt:TokenLifetimeMinutes"] ?? "60"));
@@ -346,7 +356,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 new Claim(ClaimTypes.Role, user.Role ?? "Customer")
             };
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(GetJwtKey()));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
             var expires = DateTime.UtcNow.AddMinutes(int.Parse(_config["Jwt:TokenLifetimeMinutes"] ?? "60"));
 
