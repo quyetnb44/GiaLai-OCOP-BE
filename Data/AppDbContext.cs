@@ -22,6 +22,7 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<Payment> Payments { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<EmailVerification> EmailVerifications { get; set; }
+        public DbSet<ShippingAddress> ShippingAddresses { get; set; }
 
 
 
@@ -86,6 +87,19 @@ namespace GiaLaiOCOP.Api.Data
                 .WithMany(c => c.Products)
                 .HasForeignKey(p => p.CategoryId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // 🟩 Cấu hình quan hệ User - ShippingAddress (1-n)
+            modelBuilder.Entity<ShippingAddress>()
+                .HasOne(sa => sa.User)
+                .WithMany(u => u.ShippingAddresses)
+                .HasForeignKey(sa => sa.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Đảm bảo mỗi user chỉ có 1 địa chỉ mặc định
+            modelBuilder.Entity<ShippingAddress>()
+                .HasIndex(sa => new { sa.UserId, sa.IsDefault })
+                .HasFilter("\"IsDefault\" = true")
+                .IsUnique(false); // Allow multiple false, but we'll enforce uniqueness in code
         }
     }
 }

@@ -25,8 +25,12 @@ namespace GiaLaiOCOP.Api.Models
         // Xác thực email
         public bool IsEmailVerified { get; set; } = false;
 
-        // Địa chỉ giao hàng chính
+        // Địa chỉ giao hàng chính (giữ lại để backward compatibility)
         public string? ShippingAddress { get; set; }
+
+        // Quan hệ: 1 user có thể có nhiều địa chỉ giao hàng
+        [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON
+        public ICollection<ShippingAddress> ShippingAddresses { get; set; } = new List<ShippingAddress>();
 
         // Quan hệ: 1 user có thể có nhiều đơn hàng
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON
