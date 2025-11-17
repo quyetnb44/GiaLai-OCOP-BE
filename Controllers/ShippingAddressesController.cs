@@ -76,15 +76,18 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 GET: api/shipping-addresses - Lấy tất cả địa chỉ của user hiện tại
+        // 🔒 SECURITY: Chỉ trả về địa chỉ của user đang đăng nhập (filter theo UserId từ token)
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ShippingAddressDto>>> GetShippingAddresses()
         {
+            // 🔒 SECURITY: Lấy UserId từ JWT token, KHÔNG trust client
             var userId = await GetCurrentUserIdAsync();
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
+            // 🔒 SECURITY: Filter theo UserId để đảm bảo chỉ lấy địa chỉ của user hiện tại
             var addresses = await _context.ShippingAddresses
-                .Where(sa => sa.UserId == userId.Value)
+                .Where(sa => sa.UserId == userId.Value) // 🔒 SECURITY: Ngăn lấy địa chỉ của user khác
                 .OrderByDescending(sa => sa.IsDefault)
                 .ThenByDescending(sa => sa.CreatedAt)
                 .ToListAsync();
@@ -95,15 +98,18 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 GET: api/shipping-addresses/{id} - Lấy địa chỉ theo ID
+        // 🔒 SECURITY: Kiểm tra cả Id VÀ UserId để ngăn user này lấy địa chỉ của user khác
         [HttpGet("{id}")]
         public async Task<ActionResult<ShippingAddressDto>> GetShippingAddress(int id)
         {
+            // 🔒 SECURITY: Lấy UserId từ JWT token, KHÔNG trust client
             var userId = await GetCurrentUserIdAsync();
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
+            // 🔒 SECURITY: Filter theo cả Id VÀ UserId để ngăn truy cập địa chỉ của user khác
             var address = await _context.ShippingAddresses
-                .FirstOrDefaultAsync(sa => sa.Id == id && sa.UserId == userId.Value);
+                .FirstOrDefaultAsync(sa => sa.Id == id && sa.UserId == userId.Value); // 🔒 SECURITY: Kiểm tra ownership
 
             if (address == null)
                 return NotFound("Không tìm thấy địa chỉ giao hàng.");
@@ -112,12 +118,16 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 POST: api/shipping-addresses - Tạo địa chỉ mới
+        // 🔒 SECURITY: UserId được lấy từ JWT token (GetCurrentUserIdAsync), KHÔNG từ DTO
+        // 🔒 SECURITY: CreateShippingAddressDto KHÔNG có field UserId để ngăn client giả mạo
+        // 🔒 SECURITY: Đảm bảo địa chỉ chỉ được tạo cho user đang đăng nhập
         [HttpPost]
         public async Task<ActionResult<ShippingAddressDto>> CreateShippingAddress([FromBody] CreateShippingAddressDto dto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            // 🔒 SECURITY: Lấy UserId từ JWT token, KHÔNG trust client
             var userId = await GetCurrentUserIdAsync();
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
@@ -138,9 +148,10 @@ namespace GiaLaiOCOP.Api.Controllers
                 }
             }
 
+            // 🔒 SECURITY: Luôn set UserId từ token, KHÔNG từ DTO
             var shippingAddress = new ShippingAddress
             {
-                UserId = userId.Value,
+                UserId = userId.Value, // 🔒 SECURITY: Lấy từ token, không từ client
                 FullName = dto.FullName.Trim(),
                 PhoneNumber = dto.PhoneNumber.Trim(),
                 AddressLine = dto.AddressLine.Trim(),
@@ -169,18 +180,22 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 PUT: api/shipping-addresses/{id} - Cập nhật địa chỉ
+        // 🔒 SECURITY: Kiểm tra cả Id VÀ UserId để ngăn user này sửa địa chỉ của user khác
+        // 🔒 SECURITY: UpdateShippingAddressItemDto KHÔNG có field UserId để ngăn client giả mạo
         [HttpPut("{id}")]
         public async Task<ActionResult<ShippingAddressDto>> UpdateShippingAddress(int id, [FromBody] UpdateShippingAddressItemDto dto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            // 🔒 SECURITY: Lấy UserId từ JWT token, KHÔNG trust client
             var userId = await GetCurrentUserIdAsync();
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
+            // 🔒 SECURITY: Filter theo cả Id VÀ UserId để ngăn sửa địa chỉ của user khác
             var address = await _context.ShippingAddresses
-                .FirstOrDefaultAsync(sa => sa.Id == id && sa.UserId == userId.Value);
+                .FirstOrDefaultAsync(sa => sa.Id == id && sa.UserId == userId.Value); // 🔒 SECURITY: Kiểm tra ownership
 
             if (address == null)
                 return NotFound("Không tìm thấy địa chỉ giao hàng.");
@@ -274,16 +289,19 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 DELETE: api/shipping-addresses/{id} - Xóa địa chỉ
+        // 🔒 SECURITY: Kiểm tra cả Id VÀ UserId để ngăn user này xóa địa chỉ của user khác
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteShippingAddress(int id)
         {
+            // 🔒 SECURITY: Lấy UserId từ JWT token, KHÔNG trust client
             var userId = await GetCurrentUserIdAsync();
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
+            // 🔒 SECURITY: Filter theo cả Id VÀ UserId để ngăn xóa địa chỉ của user khác
             var address = await _context.ShippingAddresses
                 .Include(sa => sa.Orders) // Load Orders để kiểm tra
-                .FirstOrDefaultAsync(sa => sa.Id == id && sa.UserId == userId.Value);
+                .FirstOrDefaultAsync(sa => sa.Id == id && sa.UserId == userId.Value); // 🔒 SECURITY: Kiểm tra ownership
 
             if (address == null)
                 return NotFound("Không tìm thấy địa chỉ giao hàng.");

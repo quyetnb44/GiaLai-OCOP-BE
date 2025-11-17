@@ -44,6 +44,9 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod());
 });
 
+// 🔹 Add HttpClient for calling external APIs
+builder.Services.AddHttpClient();
+
 // 🔹 Add Email Service
 builder.Services.AddScoped<IEmailService, EmailService>();
 

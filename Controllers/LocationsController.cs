@@ -1,4 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using System.Net.Http;
+using System.Text.Json;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -10,6 +12,14 @@ namespace GiaLaiOCOP.Api.Controllers
     [ApiController]
     public class LocationsController : ControllerBase
     {
+        private readonly HttpClient _httpClient;
+        private const string VIETNAM_API_BASE = "https://provinces.open-api.vn/api";
+
+        public LocationsController(IHttpClientFactory httpClientFactory)
+        {
+            _httpClient = httpClientFactory.CreateClient();
+            _httpClient.Timeout = TimeSpan.FromSeconds(30);
+        }
         // 🔹 Dữ liệu tỉnh/thành phố của Việt Nam (63 tỉnh/thành phố)
         private static readonly Dictionary<string, string> Provinces = new()
         {
@@ -95,40 +105,130 @@ namespace GiaLaiOCOP.Api.Controllers
 
         /// <summary>
         /// GET: api/locations/districts?provinceCode=... - Lấy danh sách quận/huyện theo tỉnh/thành phố
-        /// Note: Đây là API đơn giản, trong thực tế cần có dữ liệu đầy đủ về quận/huyện
+        /// Sử dụng API công khai: https://provinces.open-api.vn/api
         /// </summary>
         [HttpGet("districts")]
-        public ActionResult<IEnumerable<LocationDto>> GetDistricts([FromQuery] string? provinceCode)
+        public async Task<ActionResult<IEnumerable<LocationDto>>> GetDistricts([FromQuery] string? provinceCode)
         {
-            // 🔹 Tạm thời trả về danh sách rỗng hoặc dữ liệu mẫu
-            // Trong thực tế, cần có file JSON hoặc database chứa dữ liệu quận/huyện
-            // Có thể sử dụng API công khai: https://provinces.open-api.vn/api/d/?p={provinceCode}
-            
             if (string.IsNullOrWhiteSpace(provinceCode))
             {
                 return BadRequest("Vui lòng cung cấp mã tỉnh/thành phố.");
             }
 
-            // 🔹 Gọi API công khai của Vietnam Address API
-            // Tạm thời trả về empty list, sẽ implement sau hoặc dùng API công khai
-            return Ok(new List<LocationDto>());
+            try
+            {
+                // 🔹 Gọi API công khai của Vietnam Address API
+                var url = $"{VIETNAM_API_BASE}/p/{provinceCode}?depth=2";
+                var response = await _httpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return StatusCode((int)response.StatusCode, $"Không thể lấy dữ liệu từ API công khai: {response.StatusCode}");
+                }
+
+                var jsonString = await response.Content.ReadAsStringAsync();
+                var jsonDoc = JsonDocument.Parse(jsonString);
+                var root = jsonDoc.RootElement;
+
+                // API trả về province object với districts array
+                var districts = new List<LocationDto>();
+                
+                if (root.TryGetProperty("districts", out var districtsElement) && districtsElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var district in districtsElement.EnumerateArray())
+                    {
+                        var code = district.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : "";
+                        var name = district.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : "";
+
+                        if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(name))
+                        {
+                            districts.Add(new LocationDto
+                            {
+                                Code = code,
+                                Name = name
+                            });
+                        }
+                    }
+                }
+
+                return Ok(districts);
+            }
+            catch (HttpRequestException ex)
+            {
+                return StatusCode(503, $"Lỗi kết nối đến API công khai: {ex.Message}");
+            }
+            catch (TaskCanceledException)
+            {
+                return StatusCode(504, "Request timeout khi gọi API công khai");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Lỗi khi xử lý dữ liệu: {ex.Message}");
+            }
         }
 
         /// <summary>
         /// GET: api/locations/wards?provinceCode=...&districtCode=... - Lấy danh sách phường/xã theo quận/huyện
-        /// Note: Đây là API đơn giản, trong thực tế cần có dữ liệu đầy đủ về phường/xã
+        /// Sử dụng API công khai: https://provinces.open-api.vn/api
         /// </summary>
         [HttpGet("wards")]
-        public ActionResult<IEnumerable<LocationDto>> GetWards([FromQuery] string? provinceCode, [FromQuery] string? districtCode)
+        public async Task<ActionResult<IEnumerable<LocationDto>>> GetWards([FromQuery] string? provinceCode, [FromQuery] string? districtCode)
         {
             if (string.IsNullOrWhiteSpace(provinceCode) || string.IsNullOrWhiteSpace(districtCode))
             {
                 return BadRequest("Vui lòng cung cấp mã tỉnh/thành phố và mã quận/huyện.");
             }
 
-            // 🔹 Gọi API công khai của Vietnam Address API
-            // Tạm thời trả về empty list, sẽ implement sau hoặc dùng API công khai
-            return Ok(new List<LocationDto>());
+            try
+            {
+                // 🔹 Gọi API công khai của Vietnam Address API
+                var url = $"{VIETNAM_API_BASE}/d/{districtCode}?depth=2";
+                var response = await _httpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return StatusCode((int)response.StatusCode, $"Không thể lấy dữ liệu từ API công khai: {response.StatusCode}");
+                }
+
+                var jsonString = await response.Content.ReadAsStringAsync();
+                var jsonDoc = JsonDocument.Parse(jsonString);
+                var root = jsonDoc.RootElement;
+
+                // API trả về district object với wards array
+                var wards = new List<LocationDto>();
+                
+                if (root.TryGetProperty("wards", out var wardsElement) && wardsElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var ward in wardsElement.EnumerateArray())
+                    {
+                        var code = ward.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : "";
+                        var name = ward.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : "";
+
+                        if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(name))
+                        {
+                            wards.Add(new LocationDto
+                            {
+                                Code = code,
+                                Name = name
+                            });
+                        }
+                    }
+                }
+
+                return Ok(wards);
+            }
+            catch (HttpRequestException ex)
+            {
+                return StatusCode(503, $"Lỗi kết nối đến API công khai: {ex.Message}");
+            }
+            catch (TaskCanceledException)
+            {
+                return StatusCode(504, "Request timeout khi gọi API công khai");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Lỗi khi xử lý dữ liệu: {ex.Message}");
+            }
         }
     }
 
