@@ -32,5 +32,9 @@ namespace GiaLaiOCOP.Api.Models
         // 💼 Nếu là admin của doanh nghiệp thì thuộc về một Enterprise
         public int? EnterpriseId { get; set; }
         public Enterprise? Enterprise { get; set; }
+
+        // 🔹 Danh sách địa chỉ giao hàng đã lưu
+        [JsonIgnore]
+        public ICollection<ShippingAddress> ShippingAddresses { get; set; } = new List<ShippingAddress>();
     }
 }

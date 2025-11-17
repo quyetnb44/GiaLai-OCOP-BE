@@ -17,7 +17,12 @@ namespace GiaLaiOCOP.Api.Models
 
         public string Status { get; set; } = "Pending"; // Pending, Processing, Shipped, Completed, Cancelled
 
-        public string? ShippingAddress { get; set; }
+        public string? ShippingAddress { get; set; } // Backward compatibility - địa chỉ string cũ
+
+        // 🔹 Thông tin địa chỉ giao hàng từ bảng ShippingAddresses
+        public int? ShippingAddressId { get; set; }
+        [JsonIgnore]
+        public ShippingAddress? ShippingAddressDetail { get; set; }
 
         // 🔹 Thông tin giao hàng
         public int? ShipperId { get; set; } // Người giao hàng (Shipper)
