@@ -87,6 +87,7 @@ namespace GiaLaiOCOP.Api.Controllers
             var product = await _context.Products
                 .Include(p => p.Reviews)
                 .Include(p => p.Category)
+                .Include(p => p.Enterprise)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (product == null) return NotFound();

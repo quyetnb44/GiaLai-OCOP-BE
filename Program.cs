@@ -15,9 +15,12 @@ using System.IdentityModel.Tokens.Jwt;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 🔹 Kết nối Database
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// 🔹 Kết nối Database (chỉ khi không phải Testing environment)
+if (!builder.Environment.EnvironmentName.Equals("Testing", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+}
 
 // 🔹 Add JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -147,81 +150,87 @@ app.MapControllers();
 
 // 🔹 Health Check endpoint
 app.MapHealthChecks("/health");
-// 🔹 Khởi tạo dữ liệu mặc định
-using (var scope = app.Services.CreateScope())
+// 🔹 Khởi tạo dữ liệu mặc định (chỉ khi không phải Testing environment)
+if (!app.Environment.EnvironmentName.Equals("Testing", StringComparison.OrdinalIgnoreCase))
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-    // 1️⃣ Tạo Enterprise mặc định nếu chưa có
-    Enterprise defaultEnterprise;
-    if (!db.Enterprises.Any())
+    using (var scope = app.Services.CreateScope())
     {
-        defaultEnterprise = new Enterprise
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // 1️⃣ Tạo Enterprise mặc định nếu chưa có
+        Enterprise defaultEnterprise;
+        if (!db.Enterprises.Any())
         {
-            Name = "Default Enterprise",
-            Description = "Enterprise mặc định để gán các sản phẩm cũ"
-        };
-        db.Enterprises.Add(defaultEnterprise);
-        db.SaveChanges();
-        Console.WriteLine("Đã tạo Enterprise mặc định.");
-    }
-    else
-    {
-        defaultEnterprise = db.Enterprises.First();
-    }
-
-    // 2️⃣ Gán EnterpriseId cho Product chưa có
-    var productsWithoutEnterprise = db.Products
-        .Where(p => p.EnterpriseId == 0) // 🔥 Sửa: EnterpriseId là int, chỉ check == 0
-        .ToList();
-
-    foreach (var p in productsWithoutEnterprise)
-    {
-        p.EnterpriseId = defaultEnterprise.Id;
-    }
-    db.SaveChanges();
-    Console.WriteLine($"Đã gán EnterpriseId cho {productsWithoutEnterprise.Count} sản phẩm chưa có.");
-
-    // 3️⃣ Tạo SystemAdmin nếu chưa có
-    if (!db.Users.Any(u => u.Role == "SystemAdmin"))
-    {
-        var sysAdmin = new User
+            defaultEnterprise = new Enterprise
+            {
+                Name = "Default Enterprise",
+                Description = "Enterprise mặc định để gán các sản phẩm cũ"
+            };
+            db.Enterprises.Add(defaultEnterprise);
+            db.SaveChanges();
+            Console.WriteLine("Đã tạo Enterprise mặc định.");
+        }
+        else
         {
-            Name = "System Administrator",
-            Email = "admin@system.com",
-            Password = BCrypt.Net.BCrypt.HashPassword("123456"),
-            Role = "SystemAdmin",
-            IsEmailVerified = true // SystemAdmin mặc định đã verify
-        };
-        db.Users.Add(sysAdmin);
-        db.SaveChanges();
-        Console.WriteLine("SystemAdmin mặc định đã được tạo: admin@system.com / 123456");
-    }
+            defaultEnterprise = db.Enterprises.First();
+        }
 
-    // 4️⃣ Cập nhật IsEmailVerified = true cho user cũ (tạo trước khi có tính năng xác thực email)
-    var usersNotVerified = db.Users
-        .Where(u => !u.IsEmailVerified)
-        .ToList();
+        // 2️⃣ Gán EnterpriseId cho Product chưa có
+        var productsWithoutEnterprise = db.Products
+            .Where(p => p.EnterpriseId == 0) // 🔥 Sửa: EnterpriseId là int, chỉ check == 0
+            .ToList();
 
-    if (usersNotVerified.Any())
-    {
-        foreach (var user in usersNotVerified)
+        foreach (var p in productsWithoutEnterprise)
         {
-            user.IsEmailVerified = true;
+            p.EnterpriseId = defaultEnterprise.Id;
         }
         db.SaveChanges();
-        Console.WriteLine($"Đã cập nhật IsEmailVerified = true cho {usersNotVerified.Count} user cũ.");
-    }
+        Console.WriteLine($"Đã gán EnterpriseId cho {productsWithoutEnterprise.Count} sản phẩm chưa có.");
 
-    // 5️⃣ Seed dữ liệu mẫu cho Map (chỉ trong Development)
-    if (app.Environment.IsDevelopment())
-    {
-        MapSeedData.SeedMapData(db);
-    }
+        // 3️⃣ Tạo SystemAdmin nếu chưa có
+        if (!db.Users.Any(u => u.Role == "SystemAdmin"))
+        {
+            var sysAdmin = new User
+            {
+                Name = "System Administrator",
+                Email = "admin@system.com",
+                Password = BCrypt.Net.BCrypt.HashPassword("123456"),
+                Role = "SystemAdmin",
+                IsEmailVerified = true // SystemAdmin mặc định đã verify
+            };
+            db.Users.Add(sysAdmin);
+            db.SaveChanges();
+            Console.WriteLine("SystemAdmin mặc định đã được tạo: admin@system.com / 123456");
+        }
 
-    // 6️⃣ Cập nhật AverageRating cho dữ liệu hiện có (chỉ chạy 1 lần khi deploy)
-    // Uncomment 2 dòng dưới để chạy script cập nhật AverageRating cho dữ liệu hiện có
-    // var ratingService = scope.ServiceProvider.GetRequiredService<GiaLaiOCOP.Api.Services.IRatingService>();
-    // await GiaLaiOCOP.Api.Scripts.UpdateAverageRatingsScript.RunAsync(db, ratingService);
+        // 4️⃣ Cập nhật IsEmailVerified = true cho user cũ (tạo trước khi có tính năng xác thực email)
+        var usersNotVerified = db.Users
+            .Where(u => !u.IsEmailVerified)
+            .ToList();
+
+        if (usersNotVerified.Any())
+        {
+            foreach (var user in usersNotVerified)
+            {
+                user.IsEmailVerified = true;
+            }
+            db.SaveChanges();
+            Console.WriteLine($"Đã cập nhật IsEmailVerified = true cho {usersNotVerified.Count} user cũ.");
+        }
+
+        // 5️⃣ Seed dữ liệu mẫu cho Map (chỉ trong Development)
+        if (app.Environment.IsDevelopment())
+        {
+            MapSeedData.SeedMapData(db);
+        }
+
+        // 6️⃣ Cập nhật AverageRating cho dữ liệu hiện có (chỉ chạy 1 lần khi deploy)
+        // Uncomment 2 dòng dưới để chạy script cập nhật AverageRating cho dữ liệu hiện có
+        // var ratingService = scope.ServiceProvider.GetRequiredService<GiaLaiOCOP.Api.Services.IRatingService>();
+        // await GiaLaiOCOP.Api.Scripts.UpdateAverageRatingsScript.RunAsync(db, ratingService);
+    }
 }
 app.Run();
+
+// Make Program class accessible for integration tests
+public partial class Program { }

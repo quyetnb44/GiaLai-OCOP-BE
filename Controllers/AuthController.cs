@@ -124,7 +124,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 return BadRequest(ModelState);
 
             var email = dto.Email.Trim().ToLower();
-            var user = await _context.Users.SingleOrDefaultAsync(u => u.Email == email);
+            var user = await _context.Users.SingleOrDefaultAsync(u => u.Email.ToLower() == email);
             if (user == null) return Unauthorized("Email hoặc mật khẩu không đúng.");
 
             // 🔹 Kiểm tra password
