@@ -25,6 +25,9 @@ namespace GiaLaiOCOP.Api.Models
         // Xác thực email
         public bool IsEmailVerified { get; set; } = false;
 
+        // Địa chỉ giao hàng chính
+        public string? ShippingAddress { get; set; }
+
         // Quan hệ: 1 user có thể có nhiều đơn hàng
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON
         public ICollection<Order> Orders { get; set; } = new List<Order>();

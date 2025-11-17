@@ -13,6 +13,9 @@ namespace GiaLaiOCOP.Api.Dtos
 
         [StringLength(100, MinimumLength = 6, ErrorMessage = "Mật khẩu phải từ 6 đến 100 ký tự.")]
         public string? Password { get; set; }
+
+        [StringLength(500, ErrorMessage = "Địa chỉ giao hàng không được vượt quá 500 ký tự.")]
+        public string? ShippingAddress { get; set; }
     }
 }
 

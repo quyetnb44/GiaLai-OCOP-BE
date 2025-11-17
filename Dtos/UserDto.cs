@@ -12,4 +12,5 @@ public class UserDto
     public EnterpriseDto? Enterprise { get; set; }    // thêm Enterprise (nullable)
     public bool IsEmailVerified { get; set; } = false; // Trạng thái xác thực email
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow; // Ngày tạo tài khoản
+    public string? ShippingAddress { get; set; } // Địa chỉ giao hàng chính
 }

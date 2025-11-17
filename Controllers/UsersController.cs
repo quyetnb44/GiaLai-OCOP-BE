@@ -36,6 +36,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 EnterpriseId = u.EnterpriseId,
                 IsEmailVerified = u.IsEmailVerified,
                 CreatedAt = u.CreatedAt,
+                ShippingAddress = u.ShippingAddress,
                 Enterprise = u.Enterprise == null ? null : new EnterpriseDto
                 {
                     Id = u.Enterprise.Id,
@@ -83,6 +84,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 EnterpriseId = user.EnterpriseId,
                 IsEmailVerified = user.IsEmailVerified,
                 CreatedAt = user.CreatedAt,
+                ShippingAddress = user.ShippingAddress,
                 Enterprise = user.Enterprise == null ? null : new EnterpriseDto
                 {
                     Id = user.Enterprise.Id,
@@ -133,6 +135,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 EnterpriseId = targetUser.EnterpriseId,
                 IsEmailVerified = targetUser.IsEmailVerified,
                 CreatedAt = targetUser.CreatedAt,
+                ShippingAddress = targetUser.ShippingAddress,
                 Enterprise = targetUser.Enterprise == null ? null : new EnterpriseDto
                 {
                     Id = targetUser.Enterprise.Id,
@@ -183,6 +186,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 EnterpriseId = user.EnterpriseId,
                 IsEmailVerified = user.IsEmailVerified,
                 CreatedAt = user.CreatedAt,
+                ShippingAddress = user.ShippingAddress,
                 Enterprise = new EnterpriseDto
                 {
                     Id = enterprise.Id,
@@ -226,7 +230,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 Email = user.Email,
                 Role = user.Role,
                 IsEmailVerified = user.IsEmailVerified,
-                CreatedAt = user.CreatedAt
+                CreatedAt = user.CreatedAt,
+                ShippingAddress = user.ShippingAddress
             };
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, userDto);
@@ -283,6 +288,14 @@ namespace GiaLaiOCOP.Api.Controllers
                 user.Password = BCrypt.Net.BCrypt.HashPassword(dto.Password);
             }
 
+            // Cập nhật địa chỉ giao hàng nếu có
+            if (dto.ShippingAddress != null)
+            {
+                user.ShippingAddress = string.IsNullOrWhiteSpace(dto.ShippingAddress) 
+                    ? null 
+                    : dto.ShippingAddress.Trim();
+            }
+
             await _context.SaveChangesAsync();
 
             var userDto = new UserDto
@@ -294,6 +307,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 EnterpriseId = user.EnterpriseId,
                 IsEmailVerified = user.IsEmailVerified,
                 CreatedAt = user.CreatedAt,
+                ShippingAddress = user.ShippingAddress,
                 Enterprise = user.Enterprise == null ? null : new EnterpriseDto
                 {
                     Id = user.Enterprise.Id,
