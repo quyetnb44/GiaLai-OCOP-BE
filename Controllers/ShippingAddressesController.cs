@@ -10,7 +10,7 @@ using System.Collections.Generic;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/shipping-addresses")]
     [ApiController]
     [Authorize]
     public class ShippingAddressesController : ControllerBase
