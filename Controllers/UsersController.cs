@@ -35,6 +35,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 Role = u.Role,
                 EnterpriseId = u.EnterpriseId,
                 IsEmailVerified = u.IsEmailVerified,
+                CreatedAt = u.CreatedAt,
                 Enterprise = u.Enterprise == null ? null : new EnterpriseDto
                 {
                     Id = u.Enterprise.Id,
@@ -81,6 +82,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 Role = user.Role,
                 EnterpriseId = user.EnterpriseId,
                 IsEmailVerified = user.IsEmailVerified,
+                CreatedAt = user.CreatedAt,
                 Enterprise = user.Enterprise == null ? null : new EnterpriseDto
                 {
                     Id = user.Enterprise.Id,
@@ -130,6 +132,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 Role = targetUser.Role,
                 EnterpriseId = targetUser.EnterpriseId,
                 IsEmailVerified = targetUser.IsEmailVerified,
+                CreatedAt = targetUser.CreatedAt,
                 Enterprise = targetUser.Enterprise == null ? null : new EnterpriseDto
                 {
                     Id = targetUser.Enterprise.Id,
@@ -179,6 +182,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 Role = user.Role,
                 EnterpriseId = user.EnterpriseId,
                 IsEmailVerified = user.IsEmailVerified,
+                CreatedAt = user.CreatedAt,
                 Enterprise = new EnterpriseDto
                 {
                     Id = enterprise.Id,
@@ -221,7 +225,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 Name = user.Name,
                 Email = user.Email,
                 Role = user.Role,
-                IsEmailVerified = user.IsEmailVerified
+                IsEmailVerified = user.IsEmailVerified,
+                CreatedAt = user.CreatedAt
             };
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, userDto);
@@ -288,6 +293,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 Role = user.Role,
                 EnterpriseId = user.EnterpriseId,
                 IsEmailVerified = user.IsEmailVerified,
+                CreatedAt = user.CreatedAt,
                 Enterprise = user.Enterprise == null ? null : new EnterpriseDto
                 {
                     Id = user.Enterprise.Id,

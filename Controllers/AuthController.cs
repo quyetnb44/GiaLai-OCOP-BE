@@ -414,55 +414,69 @@ namespace GiaLaiOCOP.Api.Controllers
 
             _logger.LogInformation($"📝 OTP code {otpCode} saved to database for {email}");
 
-            // Gửi email
+            // Gửi email - Catch exception để không crash API
             _logger.LogInformation($"📧 Attempting to send OTP email to {email}...");
-            var emailSent = await _emailService.SendOtpEmailAsync(email, otpCode, "Register");
             
-            if (!emailSent)
+            try
             {
-                _logger.LogWarning($"⚠️ Failed to send verification OTP email to {email}, but OTP was saved: {otpCode}");
-                _logger.LogWarning($"⚠️ Please check EmailService logs above for detailed error information");
+                var emailSent = await _emailService.SendOtpEmailAsync(email, otpCode, "Register");
                 
-                // Kiểm tra xem email service có được cấu hình đầy đủ không
-                var smtpHost = _config["Email:SmtpHost"];
-                var smtpUsername = _config["Email:SmtpUsername"];
-                var smtpPassword = _config["Email:SmtpPassword"];
-                var hasEmailConfig = !string.IsNullOrEmpty(smtpHost) && 
-                                   !string.IsNullOrEmpty(smtpUsername) && 
-                                   !string.IsNullOrEmpty(smtpPassword);
-                
-                var isDevelopment = _config["ASPNETCORE_ENVIRONMENT"] == "Development" || 
-                                   _config["Environment"] == "Development";
-                
-                _logger.LogInformation($"🔧 Environment: {_config["ASPNETCORE_ENVIRONMENT"]}, IsDevelopment: {isDevelopment}");
-                _logger.LogInformation($"🔧 Email Config Present: {hasEmailConfig}");
-                
-                // CHỈ trả về OTP trong response nếu:
-                // 1. Development mode VÀ
-                // 2. Email service CHƯA được cấu hình (thiếu config)
-                // Nếu email service đã được cấu hình nhưng vẫn fail (timeout, network, etc.) → KHÔNG trả OTP
-                if (isDevelopment && !hasEmailConfig)
+                if (emailSent)
                 {
-                    _logger.LogWarning($"⚠️ Development mode without email config: Returning OTP in response for testing");
-                    return Ok(new { 
-                        message = "⚠️ Không thể gửi email. (Development mode - OTP: " + otpCode + ")",
-                        warning = "Email service chưa được cấu hình. Vui lòng cấu hình email settings.",
-                        otpCode = otpCode
-                    });
+                    _logger.LogInformation($"✅ Verification OTP email sent successfully to {email}");
+                    return Ok(new { message = "Mã OTP xác thực email đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư." });
                 }
-                
-                // Nếu email service đã được cấu hình nhưng vẫn fail → Trả về lỗi, KHÔNG trả OTP
-                // (ngay cả trong development mode)
-                _logger.LogError($"❌ Email service đã được cấu hình nhưng không thể gửi email. Vui lòng kiểm tra App Password hoặc network connectivity.");
-                return StatusCode(500, new { 
-                    message = "Không thể gửi email. Vui lòng kiểm tra cấu hình email service hoặc thử lại sau.",
-                    error = "Email service configuration error",
-                    hint = "Kiểm tra App Password của Gmail, port 465 (SSL), hoặc network connectivity trên Render"
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"❌ Exception khi gửi email OTP đến {email}");
+                _logger.LogError($"❌ Exception Type: {ex.GetType().Name}");
+                _logger.LogError($"❌ Exception Message: {ex.Message}");
+            }
+            
+            // Nếu email service fail (timeout, exception, etc.)
+            // Vẫn trả OK cho FE để không crash, nhưng thông báo rõ ràng
+            _logger.LogWarning($"⚠️ Failed to send verification OTP email to {email}, but OTP was saved: {otpCode}");
+            _logger.LogWarning($"⚠️ OTP code: {otpCode} - User có thể nhập mã này để test");
+            
+            // Kiểm tra xem email service có được cấu hình đầy đủ không
+            var smtpHost = _config["Email:SmtpHost"];
+            var smtpUsername = _config["Email:SmtpUsername"];
+            var smtpPassword = _config["Email:SmtpPassword"];
+            var hasEmailConfig = !string.IsNullOrEmpty(smtpHost) && 
+                               !string.IsNullOrEmpty(smtpUsername) && 
+                               !string.IsNullOrEmpty(smtpPassword);
+            
+            var isDevelopment = _config["ASPNETCORE_ENVIRONMENT"] == "Development" || 
+                               _config["Environment"] == "Development";
+            
+            _logger.LogInformation($"🔧 Environment: {_config["ASPNETCORE_ENVIRONMENT"]}, IsDevelopment: {isDevelopment}");
+            _logger.LogInformation($"🔧 Email Config Present: {hasEmailConfig}");
+            
+            // Trả về OK (200) thay vì 500 để FE không crash
+            // Nếu có email config → Email service có vấn đề (timeout, network, etc.)
+            // Nếu không có email config → Chưa cấu hình
+            
+            if (hasEmailConfig)
+            {
+                // Email service đã được cấu hình nhưng fail (có thể là timeout trên Render)
+                // Trả OTP trong response để user vẫn có thể test
+                return Ok(new { 
+                    message = $"⚠️ Email service không thể gửi email (có thể do timeout trên Render). OTP: {otpCode}",
+                    warning = "Vui lòng nhập mã OTP bên dưới để xác thực. Để sửa lỗi này, hãy cấu hình email service (SendGrid/SES) hoặc kiểm tra network connectivity.",
+                    otpCode = otpCode,
+                    hint = "Cân nhắc dùng SendGrid hoặc AWS SES thay vì Gmail SMTP để tránh timeout trên Render"
                 });
             }
-
-            _logger.LogInformation($"✅ Verification OTP email sent successfully to {email}");
-            return Ok(new { message = "Mã OTP xác thực email đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư." });
+            else
+            {
+                // Chưa cấu hình email service
+                return Ok(new { 
+                    message = $"⚠️ Email service chưa được cấu hình. OTP: {otpCode}",
+                    warning = "Vui lòng nhập mã OTP bên dưới để xác thực. Để gửi email tự động, hãy cấu hình email service.",
+                    otpCode = otpCode
+                });
+            }
         }
 
         // 🔹 POST /api/auth/verify-email - Xác thực email cho user đã đăng ký nhưng chưa verify

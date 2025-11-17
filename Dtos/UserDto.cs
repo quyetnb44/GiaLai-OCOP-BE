@@ -1,4 +1,6 @@
-﻿namespace GiaLaiOCOP.Api.Dtos;
+﻿using System;
+
+namespace GiaLaiOCOP.Api.Dtos;
 
 public class UserDto
 {
@@ -9,4 +11,5 @@ public class UserDto
     public int? EnterpriseId { get; set; }            // thêm EnterpriseId (nullable)
     public EnterpriseDto? Enterprise { get; set; }    // thêm Enterprise (nullable)
     public bool IsEmailVerified { get; set; } = false; // Trạng thái xác thực email
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow; // Ngày tạo tài khoản
 }
