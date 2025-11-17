@@ -412,21 +412,28 @@ namespace GiaLaiOCOP.Api.Controllers
             _context.EmailVerifications.Add(emailVerification);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation($"📝 OTP code {otpCode} saved to database for {email}");
+
             // Gửi email
+            _logger.LogInformation($"📧 Attempting to send OTP email to {email}...");
             var emailSent = await _emailService.SendOtpEmailAsync(email, otpCode, "Register");
             
             if (!emailSent)
             {
                 _logger.LogWarning($"⚠️ Failed to send verification OTP email to {email}, but OTP was saved: {otpCode}");
+                _logger.LogWarning($"⚠️ Please check EmailService logs above for detailed error information");
                 
                 var isDevelopment = _config["ASPNETCORE_ENVIRONMENT"] == "Development" || 
                                    _config["Environment"] == "Development";
                 
+                _logger.LogInformation($"🔧 Environment: {_config["ASPNETCORE_ENVIRONMENT"]}, IsDevelopment: {isDevelopment}");
+                
                 if (isDevelopment)
                 {
+                    _logger.LogWarning($"⚠️ Development mode: Returning OTP in response for testing");
                     return Ok(new { 
                         message = "⚠️ Không thể gửi email. (Development mode - OTP: " + otpCode + ")",
-                        warning = "Email service chưa được cấu hình.",
+                        warning = "Email service chưa được cấu hình hoặc có lỗi. Vui lòng kiểm tra log backend.",
                         otpCode = otpCode
                     });
                 }

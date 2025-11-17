@@ -26,16 +26,22 @@ namespace GiaLaiOCOP.Api.Services
         {
             try
             {
+                _logger.LogInformation($"🔹 Starting to send OTP email to {toEmail} for purpose: {purpose}");
+
                 var smtpHost = _configuration["Email:SmtpHost"];
-                var smtpPort = int.Parse(_configuration["Email:SmtpPort"] ?? "587");
+                var smtpPortStr = _configuration["Email:SmtpPort"] ?? "587";
+                var smtpPort = int.Parse(smtpPortStr);
                 var smtpUsername = _configuration["Email:SmtpUsername"];
                 var smtpPassword = _configuration["Email:SmtpPassword"];
                 var fromEmail = _configuration["Email:FromEmail"] ?? smtpUsername;
                 var fromName = _configuration["Email:FromName"] ?? "GiaLai OCOP";
 
+                _logger.LogInformation($"📧 Email Config - Host: {smtpHost}, Port: {smtpPort}, From: {fromEmail}, To: {toEmail}");
+
                 if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
                 {
                     _logger.LogError("❌ Email configuration is missing! Please configure Email settings in appsettings.json");
+                    _logger.LogError($"Missing values - Host: {string.IsNullOrEmpty(smtpHost)}, Username: {string.IsNullOrEmpty(smtpUsername)}, Password: {string.IsNullOrEmpty(smtpPassword)}");
                     _logger.LogError("Required: Email:SmtpHost, Email:SmtpUsername, Email:SmtpPassword");
                     return false;
                 }
@@ -104,18 +110,35 @@ namespace GiaLaiOCOP.Api.Services
                         ? SecureSocketOptions.SslOnConnect 
                         : SecureSocketOptions.StartTls;
 
+                    _logger.LogInformation($"🔌 Connecting to SMTP server {smtpHost}:{smtpPort} with {socketOptions}");
+                    
                     await client.ConnectAsync(smtpHost, smtpPort, socketOptions);
+                    _logger.LogInformation($"✅ Connected to SMTP server");
+
+                    _logger.LogInformation($"🔐 Authenticating with username: {smtpUsername}");
                     await client.AuthenticateAsync(smtpUsername, smtpPassword);
+                    _logger.LogInformation($"✅ Authenticated successfully");
+
+                    _logger.LogInformation($"📤 Sending email to {toEmail}...");
                     await client.SendAsync(message);
+                    _logger.LogInformation($"✅ Email sent successfully");
+
                     await client.DisconnectAsync(true);
+                    _logger.LogInformation($"🔌 Disconnected from SMTP server");
                 }
 
-                _logger.LogInformation($"OTP email sent successfully to {toEmail}");
+                _logger.LogInformation($"✅ OTP email sent successfully to {toEmail} with code: {otpCode}");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Failed to send OTP email to {toEmail}");
+                _logger.LogError(ex, $"❌ Failed to send OTP email to {toEmail}");
+                _logger.LogError($"❌ Error Type: {ex.GetType().Name}");
+                _logger.LogError($"❌ Error Message: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    _logger.LogError($"❌ Inner Exception: {ex.InnerException.Message}");
+                }
                 return false;
             }
         }
