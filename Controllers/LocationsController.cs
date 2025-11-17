@@ -1,148 +1,140 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authorization;
-using GiaLaiOCOP.Api.Data;
-using GiaLaiOCOP.Api.Models;
-using GiaLaiOCOP.Api.Dtos;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
+    /// <summary>
+    /// API để lấy danh sách tỉnh/thành phố, quận/huyện, phường/xã của Việt Nam
+    /// Sử dụng dữ liệu từ API công khai hoặc file JSON
+    /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     public class LocationsController : ControllerBase
     {
-        private readonly AppDbContext _context;
-
-        public LocationsController(AppDbContext context)
+        // 🔹 Dữ liệu tỉnh/thành phố của Việt Nam (63 tỉnh/thành phố)
+        private static readonly Dictionary<string, string> Provinces = new()
         {
-            _context = context;
-        }
+            { "01", "An Giang" },
+            { "02", "Bà Rịa - Vũng Tàu" },
+            { "03", "Bắc Giang" },
+            { "04", "Bắc Kạn" },
+            { "05", "Bạc Liêu" },
+            { "06", "Bắc Ninh" },
+            { "07", "Bến Tre" },
+            { "08", "Bình Định" },
+            { "09", "Bình Dương" },
+            { "10", "Bình Phước" },
+            { "11", "Bình Thuận" },
+            { "12", "Cà Mau" },
+            { "13", "Cao Bằng" },
+            { "14", "Đắk Lắk" },
+            { "15", "Đắk Nông" },
+            { "16", "Điện Biên" },
+            { "17", "Đồng Nai" },
+            { "18", "Đồng Tháp" },
+            { "19", "Gia Lai" },
+            { "20", "Hà Giang" },
+            { "21", "Hà Nam" },
+            { "22", "Hà Tĩnh" },
+            { "23", "Hải Dương" },
+            { "24", "Hải Phòng" },
+            { "25", "Hậu Giang" },
+            { "26", "Hòa Bình" },
+            { "27", "Hưng Yên" },
+            { "28", "Khánh Hòa" },
+            { "29", "Kiên Giang" },
+            { "30", "Kon Tum" },
+            { "31", "Lai Châu" },
+            { "32", "Lâm Đồng" },
+            { "33", "Lạng Sơn" },
+            { "34", "Lào Cai" },
+            { "35", "Long An" },
+            { "36", "Nam Định" },
+            { "37", "Nghệ An" },
+            { "38", "Ninh Bình" },
+            { "39", "Ninh Thuận" },
+            { "40", "Phú Thọ" },
+            { "41", "Phú Yên" },
+            { "42", "Quảng Bình" },
+            { "43", "Quảng Nam" },
+            { "44", "Quảng Ngãi" },
+            { "45", "Quảng Ninh" },
+            { "46", "Quảng Trị" },
+            { "47", "Sóc Trăng" },
+            { "48", "Sơn La" },
+            { "49", "Tây Ninh" },
+            { "50", "Thái Bình" },
+            { "51", "Thái Nguyên" },
+            { "52", "Thanh Hóa" },
+            { "53", "Thừa Thiên Huế" },
+            { "54", "Tiền Giang" },
+            { "55", "TP Hồ Chí Minh" },
+            { "56", "Trà Vinh" },
+            { "57", "Tuyên Quang" },
+            { "58", "Vĩnh Long" },
+            { "59", "Vĩnh Phúc" },
+            { "60", "Yên Bái" },
+            { "61", "TP Hà Nội" },
+            { "62", "TP Cần Thơ" },
+            { "63", "TP Đà Nẵng" }
+        };
 
-        // 🔹 GET: api/locations - Xem tất cả địa điểm (public)
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<LocationDto>>> GetLocations()
+        /// <summary>
+        /// GET: api/locations/provinces - Lấy danh sách tất cả tỉnh/thành phố
+        /// </summary>
+        [HttpGet("provinces")]
+        public ActionResult<IEnumerable<LocationDto>> GetProvinces()
         {
-            var locations = await _context.Locations.ToListAsync();
-
-            var locationDtos = locations.Select(l => new LocationDto
+            var provinces = Provinces.Select(p => new LocationDto
             {
-                Id = l.Id,
-                Name = l.Name,
-                Address = l.Address,
-                Latitude = l.Latitude,
-                Longitude = l.Longitude
-            });
+                Code = p.Key,
+                Name = p.Value
+            }).OrderBy(p => p.Name).ToList();
 
-            return Ok(locationDtos);
+            return Ok(provinces);
         }
 
-        // 🔹 GET: api/locations/{id} - Xem chi tiết địa điểm (public)
-        [HttpGet("{id}")]
-        public async Task<ActionResult<LocationDto>> GetLocation(int id)
+        /// <summary>
+        /// GET: api/locations/districts?provinceCode=... - Lấy danh sách quận/huyện theo tỉnh/thành phố
+        /// Note: Đây là API đơn giản, trong thực tế cần có dữ liệu đầy đủ về quận/huyện
+        /// </summary>
+        [HttpGet("districts")]
+        public ActionResult<IEnumerable<LocationDto>> GetDistricts([FromQuery] string? provinceCode)
         {
-            var location = await _context.Locations.FindAsync(id);
-            if (location == null) return NotFound("Không tìm thấy địa điểm.");
-
-            var locationDto = new LocationDto
+            // 🔹 Tạm thời trả về danh sách rỗng hoặc dữ liệu mẫu
+            // Trong thực tế, cần có file JSON hoặc database chứa dữ liệu quận/huyện
+            // Có thể sử dụng API công khai: https://provinces.open-api.vn/api/d/?p={provinceCode}
+            
+            if (string.IsNullOrWhiteSpace(provinceCode))
             {
-                Id = location.Id,
-                Name = location.Name,
-                Address = location.Address,
-                Latitude = location.Latitude,
-                Longitude = location.Longitude
-            };
+                return BadRequest("Vui lòng cung cấp mã tỉnh/thành phố.");
+            }
 
-            return Ok(locationDto);
+            // 🔹 Gọi API công khai của Vietnam Address API
+            // Tạm thời trả về empty list, sẽ implement sau hoặc dùng API công khai
+            return Ok(new List<LocationDto>());
         }
 
-        // 🔹 POST: api/locations - Tạo địa điểm mới (chỉ SystemAdmin)
-        [Authorize(Roles = "SystemAdmin")]
-        [HttpPost]
-        public async Task<ActionResult<LocationDto>> CreateLocation([FromBody] CreateLocationDto dto)
+        /// <summary>
+        /// GET: api/locations/wards?provinceCode=...&districtCode=... - Lấy danh sách phường/xã theo quận/huyện
+        /// Note: Đây là API đơn giản, trong thực tế cần có dữ liệu đầy đủ về phường/xã
+        /// </summary>
+        [HttpGet("wards")]
+        public ActionResult<IEnumerable<LocationDto>> GetWards([FromQuery] string? provinceCode, [FromQuery] string? districtCode)
         {
-            // 🔹 Validation
-            if (string.IsNullOrWhiteSpace(dto.Name))
-                return BadRequest("Tên địa điểm là bắt buộc.");
-
-            if (string.IsNullOrWhiteSpace(dto.Address))
-                return BadRequest("Địa chỉ là bắt buộc.");
-
-            // 🔹 Validation: Latitude (-90 đến 90)
-            if (dto.Latitude < -90 || dto.Latitude > 90)
-                return BadRequest("Latitude (vĩ độ) phải nằm trong khoảng -90 đến 90.");
-
-            // 🔹 Validation: Longitude (-180 đến 180)
-            if (dto.Longitude < -180 || dto.Longitude > 180)
-                return BadRequest("Longitude (kinh độ) phải nằm trong khoảng -180 đến 180.");
-
-            var location = new Location
+            if (string.IsNullOrWhiteSpace(provinceCode) || string.IsNullOrWhiteSpace(districtCode))
             {
-                Name = dto.Name.Trim(),
-                Address = dto.Address.Trim(),
-                Latitude = dto.Latitude,
-                Longitude = dto.Longitude
-            };
+                return BadRequest("Vui lòng cung cấp mã tỉnh/thành phố và mã quận/huyện.");
+            }
 
-            _context.Locations.Add(location);
-            await _context.SaveChangesAsync();
-
-            var locationDto = new LocationDto
-            {
-                Id = location.Id,
-                Name = location.Name,
-                Address = location.Address,
-                Latitude = location.Latitude,
-                Longitude = location.Longitude
-            };
-
-            return CreatedAtAction(nameof(GetLocation), new { id = location.Id }, locationDto);
+            // 🔹 Gọi API công khai của Vietnam Address API
+            // Tạm thời trả về empty list, sẽ implement sau hoặc dùng API công khai
+            return Ok(new List<LocationDto>());
         }
+    }
 
-        // 🔹 PUT: api/locations/{id} - Cập nhật địa điểm (chỉ SystemAdmin)
-        [Authorize(Roles = "SystemAdmin")]
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateLocation(int id, [FromBody] CreateLocationDto dto)
-        {
-            var location = await _context.Locations.FindAsync(id);
-            if (location == null) return NotFound("Không tìm thấy địa điểm.");
-
-            // 🔹 Validation
-            if (string.IsNullOrWhiteSpace(dto.Name))
-                return BadRequest("Tên địa điểm là bắt buộc.");
-
-            if (string.IsNullOrWhiteSpace(dto.Address))
-                return BadRequest("Địa chỉ là bắt buộc.");
-
-            // 🔹 Validation: Latitude
-            if (dto.Latitude < -90 || dto.Latitude > 90)
-                return BadRequest("Latitude (vĩ độ) phải nằm trong khoảng -90 đến 90.");
-
-            // 🔹 Validation: Longitude
-            if (dto.Longitude < -180 || dto.Longitude > 180)
-                return BadRequest("Longitude (kinh độ) phải nằm trong khoảng -180 đến 180.");
-
-            location.Name = dto.Name.Trim();
-            location.Address = dto.Address.Trim();
-            location.Latitude = dto.Latitude;
-            location.Longitude = dto.Longitude;
-
-            await _context.SaveChangesAsync();
-
-            return NoContent();
-        }
-
-        // 🔹 DELETE: api/locations/{id} - Xóa địa điểm (chỉ SystemAdmin)
-        [Authorize(Roles = "SystemAdmin")]
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteLocation(int id)
-        {
-            var location = await _context.Locations.FindAsync(id);
-            if (location == null) return NotFound("Không tìm thấy địa điểm.");
-
-            _context.Locations.Remove(location);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
-        }
+    public class LocationDto
+    {
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
     }
 }

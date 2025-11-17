@@ -100,6 +100,14 @@ namespace GiaLaiOCOP.Api.Data
                 .HasIndex(sa => new { sa.UserId, sa.IsDefault })
                 .HasFilter("\"IsDefault\" = true")
                 .IsUnique(false); // Allow multiple false, but we'll enforce uniqueness in code
+
+            // 🟩 Cấu hình quan hệ Order - ShippingAddress (n-1)
+            // Một Order có thể có 1 ShippingAddress (tùy chọn, vì có thể dùng ShippingAddress string cũ)
+            modelBuilder.Entity<Order>()
+                .HasOne(o => o.ShippingAddressDetail)
+                .WithMany(sa => sa.Orders)
+                .HasForeignKey(o => o.ShippingAddressId)
+                .OnDelete(DeleteBehavior.Restrict); // Không cho xóa địa chỉ nếu đang dùng trong đơn hàng
         }
     }
 }

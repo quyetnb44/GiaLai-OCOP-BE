@@ -6,6 +6,7 @@ using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using System.Collections.Generic;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -42,6 +43,38 @@ namespace GiaLaiOCOP.Api.Controllers
             return null;
         }
 
+        // 🔹 Helper: Tạo địa chỉ đầy đủ từ các trường AddressLine, Ward, District, Province
+        private string BuildFullAddress(string addressLine, string ward, string district, string province)
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(addressLine)) parts.Add(addressLine.Trim());
+            if (!string.IsNullOrWhiteSpace(ward)) parts.Add(ward.Trim());
+            if (!string.IsNullOrWhiteSpace(district)) parts.Add(district.Trim());
+            if (!string.IsNullOrWhiteSpace(province)) parts.Add(province.Trim());
+            return string.Join(", ", parts);
+        }
+
+        // 🔹 Helper: Map ShippingAddress sang ShippingAddressDto
+        private ShippingAddressDto MapToDto(ShippingAddress address)
+        {
+            return new ShippingAddressDto
+            {
+                Id = address.Id,
+                UserId = address.UserId,
+                FullName = address.FullName,
+                PhoneNumber = address.PhoneNumber,
+                AddressLine = address.AddressLine,
+                Ward = address.Ward,
+                District = address.District,
+                Province = address.Province,
+                Address = address.Address, // Full address string
+                Label = address.Label,
+                IsDefault = address.IsDefault,
+                CreatedAt = address.CreatedAt,
+                UpdatedAt = address.UpdatedAt
+            };
+        }
+
         // 🔹 GET: api/shipping-addresses - Lấy tất cả địa chỉ của user hiện tại
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ShippingAddressDto>>> GetShippingAddresses()
@@ -56,16 +89,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 .ThenByDescending(sa => sa.CreatedAt)
                 .ToListAsync();
 
-            var addressesDto = addresses.Select(sa => new ShippingAddressDto
-            {
-                Id = sa.Id,
-                UserId = sa.UserId,
-                Address = sa.Address,
-                Label = sa.Label,
-                IsDefault = sa.IsDefault,
-                CreatedAt = sa.CreatedAt,
-                UpdatedAt = sa.UpdatedAt
-            }).ToList();
+            var addressesDto = addresses.Select(MapToDto).ToList();
 
             return Ok(addressesDto);
         }
@@ -84,18 +108,7 @@ namespace GiaLaiOCOP.Api.Controllers
             if (address == null)
                 return NotFound("Không tìm thấy địa chỉ giao hàng.");
 
-            var addressDto = new ShippingAddressDto
-            {
-                Id = address.Id,
-                UserId = address.UserId,
-                Address = address.Address,
-                Label = address.Label,
-                IsDefault = address.IsDefault,
-                CreatedAt = address.CreatedAt,
-                UpdatedAt = address.UpdatedAt
-            };
-
-            return Ok(addressDto);
+            return Ok(MapToDto(address));
         }
 
         // 🔹 POST: api/shipping-addresses - Tạo địa chỉ mới
@@ -109,9 +122,8 @@ namespace GiaLaiOCOP.Api.Controllers
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
-            // Validation
-            if (string.IsNullOrWhiteSpace(dto.Address))
-                return BadRequest("Địa chỉ giao hàng không được để trống.");
+            // Tự động tạo địa chỉ đầy đủ từ các trường
+            var fullAddress = BuildFullAddress(dto.AddressLine, dto.Ward, dto.District, dto.Province);
 
             // Nếu đặt làm mặc định, bỏ mặc định của các địa chỉ khác
             if (dto.IsDefault)
@@ -129,7 +141,13 @@ namespace GiaLaiOCOP.Api.Controllers
             var shippingAddress = new ShippingAddress
             {
                 UserId = userId.Value,
-                Address = dto.Address.Trim(),
+                FullName = dto.FullName.Trim(),
+                PhoneNumber = dto.PhoneNumber.Trim(),
+                AddressLine = dto.AddressLine.Trim(),
+                Ward = dto.Ward.Trim(),
+                District = dto.District.Trim(),
+                Province = dto.Province.Trim(),
+                Address = fullAddress, // Tự động tạo địa chỉ đầy đủ
                 Label = string.IsNullOrWhiteSpace(dto.Label) ? null : dto.Label.Trim(),
                 IsDefault = dto.IsDefault,
                 CreatedAt = DateTime.UtcNow
@@ -147,18 +165,7 @@ namespace GiaLaiOCOP.Api.Controllers
             _context.ShippingAddresses.Add(shippingAddress);
             await _context.SaveChangesAsync();
 
-            var addressDto = new ShippingAddressDto
-            {
-                Id = shippingAddress.Id,
-                UserId = shippingAddress.UserId,
-                Address = shippingAddress.Address,
-                Label = shippingAddress.Label,
-                IsDefault = shippingAddress.IsDefault,
-                CreatedAt = shippingAddress.CreatedAt,
-                UpdatedAt = shippingAddress.UpdatedAt
-            };
-
-            return CreatedAtAction(nameof(GetShippingAddress), new { id = shippingAddress.Id }, addressDto);
+            return CreatedAtAction(nameof(GetShippingAddress), new { id = shippingAddress.Id }, MapToDto(shippingAddress));
         }
 
         // 🔹 PUT: api/shipping-addresses/{id} - Cập nhật địa chỉ
@@ -178,13 +185,53 @@ namespace GiaLaiOCOP.Api.Controllers
             if (address == null)
                 return NotFound("Không tìm thấy địa chỉ giao hàng.");
 
-            // Cập nhật địa chỉ nếu có
-            if (dto.Address != null)
+            // Cập nhật các trường nếu có
+            if (dto.FullName != null)
             {
-                if (string.IsNullOrWhiteSpace(dto.Address))
-                    return BadRequest("Địa chỉ giao hàng không được để trống.");
+                if (string.IsNullOrWhiteSpace(dto.FullName))
+                    return BadRequest("Họ tên người nhận không được để trống.");
+                address.FullName = dto.FullName.Trim();
+            }
 
-                address.Address = dto.Address.Trim();
+            if (dto.PhoneNumber != null)
+            {
+                if (string.IsNullOrWhiteSpace(dto.PhoneNumber))
+                    return BadRequest("Số điện thoại không được để trống.");
+                address.PhoneNumber = dto.PhoneNumber.Trim();
+            }
+
+            if (dto.AddressLine != null)
+            {
+                if (string.IsNullOrWhiteSpace(dto.AddressLine))
+                    return BadRequest("Địa chỉ chi tiết không được để trống.");
+                address.AddressLine = dto.AddressLine.Trim();
+            }
+
+            if (dto.Ward != null)
+            {
+                if (string.IsNullOrWhiteSpace(dto.Ward))
+                    return BadRequest("Phường/Xã không được để trống.");
+                address.Ward = dto.Ward.Trim();
+            }
+
+            if (dto.District != null)
+            {
+                if (string.IsNullOrWhiteSpace(dto.District))
+                    return BadRequest("Quận/Huyện không được để trống.");
+                address.District = dto.District.Trim();
+            }
+
+            if (dto.Province != null)
+            {
+                if (string.IsNullOrWhiteSpace(dto.Province))
+                    return BadRequest("Tỉnh/Thành phố không được để trống.");
+                address.Province = dto.Province.Trim();
+            }
+
+            // Cập nhật địa chỉ đầy đủ nếu có thay đổi về địa chỉ
+            if (dto.AddressLine != null || dto.Ward != null || dto.District != null || dto.Province != null)
+            {
+                address.Address = BuildFullAddress(address.AddressLine, address.Ward, address.District, address.Province);
             }
 
             // Cập nhật label nếu có
@@ -210,24 +257,20 @@ namespace GiaLaiOCOP.Api.Controllers
             }
             else if (dto.IsDefault.HasValue && !dto.IsDefault.Value)
             {
+                // Không cho phép bỏ mặc định nếu đây là địa chỉ duy nhất
+                var otherAddressesExist = await _context.ShippingAddresses
+                    .AnyAsync(sa => sa.UserId == userId.Value && sa.Id != id);
+                if (!otherAddressesExist)
+                {
+                    return BadRequest("Không thể bỏ mặc định địa chỉ duy nhất của bạn.");
+                }
                 address.IsDefault = false;
             }
 
             address.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            var addressDto = new ShippingAddressDto
-            {
-                Id = address.Id,
-                UserId = address.UserId,
-                Address = address.Address,
-                Label = address.Label,
-                IsDefault = address.IsDefault,
-                CreatedAt = address.CreatedAt,
-                UpdatedAt = address.UpdatedAt
-            };
-
-            return Ok(addressDto);
+            return Ok(MapToDto(address));
         }
 
         // 🔹 DELETE: api/shipping-addresses/{id} - Xóa địa chỉ
@@ -239,10 +282,21 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             var address = await _context.ShippingAddresses
+                .Include(sa => sa.Orders) // Load Orders để kiểm tra
                 .FirstOrDefaultAsync(sa => sa.Id == id && sa.UserId == userId.Value);
 
             if (address == null)
                 return NotFound("Không tìm thấy địa chỉ giao hàng.");
+
+            // 🔹 Kiểm tra xem địa chỉ có đang dùng trong đơn hàng không
+            // Nếu có, không cho phép xóa
+            var hasOrders = await _context.Orders
+                .AnyAsync(o => o.ShippingAddressId == id);
+
+            if (hasOrders)
+            {
+                return BadRequest("Không thể xóa địa chỉ này vì đang được sử dụng trong đơn hàng. Vui lòng liên hệ quản trị viên nếu cần hỗ trợ.");
+            }
 
             var wasDefault = address.IsDefault;
 
@@ -268,4 +322,3 @@ namespace GiaLaiOCOP.Api.Controllers
         }
     }
 }
-
