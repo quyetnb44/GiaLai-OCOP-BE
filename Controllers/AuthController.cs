@@ -423,24 +423,41 @@ namespace GiaLaiOCOP.Api.Controllers
                 _logger.LogWarning($"⚠️ Failed to send verification OTP email to {email}, but OTP was saved: {otpCode}");
                 _logger.LogWarning($"⚠️ Please check EmailService logs above for detailed error information");
                 
+                // Kiểm tra xem email service có được cấu hình đầy đủ không
+                var smtpHost = _config["Email:SmtpHost"];
+                var smtpUsername = _config["Email:SmtpUsername"];
+                var smtpPassword = _config["Email:SmtpPassword"];
+                var hasEmailConfig = !string.IsNullOrEmpty(smtpHost) && 
+                                   !string.IsNullOrEmpty(smtpUsername) && 
+                                   !string.IsNullOrEmpty(smtpPassword);
+                
                 var isDevelopment = _config["ASPNETCORE_ENVIRONMENT"] == "Development" || 
                                    _config["Environment"] == "Development";
                 
                 _logger.LogInformation($"🔧 Environment: {_config["ASPNETCORE_ENVIRONMENT"]}, IsDevelopment: {isDevelopment}");
+                _logger.LogInformation($"🔧 Email Config Present: {hasEmailConfig}");
                 
-                if (isDevelopment)
+                // CHỈ trả về OTP trong response nếu:
+                // 1. Development mode VÀ
+                // 2. Email service CHƯA được cấu hình (thiếu config)
+                // Nếu email service đã được cấu hình nhưng vẫn fail (timeout, network, etc.) → KHÔNG trả OTP
+                if (isDevelopment && !hasEmailConfig)
                 {
-                    _logger.LogWarning($"⚠️ Development mode: Returning OTP in response for testing");
+                    _logger.LogWarning($"⚠️ Development mode without email config: Returning OTP in response for testing");
                     return Ok(new { 
                         message = "⚠️ Không thể gửi email. (Development mode - OTP: " + otpCode + ")",
-                        warning = "Email service chưa được cấu hình hoặc có lỗi. Vui lòng kiểm tra log backend.",
+                        warning = "Email service chưa được cấu hình. Vui lòng cấu hình email settings.",
                         otpCode = otpCode
                     });
                 }
                 
+                // Nếu email service đã được cấu hình nhưng vẫn fail → Trả về lỗi, KHÔNG trả OTP
+                // (ngay cả trong development mode)
+                _logger.LogError($"❌ Email service đã được cấu hình nhưng không thể gửi email. Vui lòng kiểm tra App Password hoặc network connectivity.");
                 return StatusCode(500, new { 
-                    message = "Không thể gửi email. Vui lòng thử lại sau.",
-                    error = "Email service configuration error"
+                    message = "Không thể gửi email. Vui lòng kiểm tra cấu hình email service hoặc thử lại sau.",
+                    error = "Email service configuration error",
+                    hint = "Kiểm tra App Password của Gmail, port 465 (SSL), hoặc network connectivity trên Render"
                 });
             }
 

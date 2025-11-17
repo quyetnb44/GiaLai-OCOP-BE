@@ -3,6 +3,7 @@ using MailKit.Security;
 using MimeKit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Threading;
 
 namespace GiaLaiOCOP.Api.Services
 {
@@ -105,26 +106,41 @@ namespace GiaLaiOCOP.Api.Services
 
                 using (var client = new SmtpClient())
                 {
+                    // Set timeout cho SMTP operations (30 giây)
+                    client.Timeout = 30000; // 30 seconds
+                    
                     // Hỗ trợ cả port 587 (StartTls) và 465 (SSL)
                     SecureSocketOptions socketOptions = smtpPort == 465 
                         ? SecureSocketOptions.SslOnConnect 
                         : SecureSocketOptions.StartTls;
 
-                    _logger.LogInformation($"🔌 Connecting to SMTP server {smtpHost}:{smtpPort} with {socketOptions}");
+                    _logger.LogInformation($"🔌 Connecting to SMTP server {smtpHost}:{smtpPort} with {socketOptions} (timeout: 30s)");
                     
-                    await client.ConnectAsync(smtpHost, smtpPort, socketOptions);
-                    _logger.LogInformation($"✅ Connected to SMTP server");
+                    // Thử kết nối với timeout
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                    {
+                        try
+                        {
+                            await client.ConnectAsync(smtpHost, smtpPort, socketOptions, cts.Token);
+                            _logger.LogInformation($"✅ Connected to SMTP server");
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            _logger.LogError($"❌ Connection timeout after 30 seconds to {smtpHost}:{smtpPort}");
+                            throw new TimeoutException($"Connection timeout to SMTP server {smtpHost}:{smtpPort}. Try using port 465 with SSL or check firewall settings.");
+                        }
 
-                    _logger.LogInformation($"🔐 Authenticating with username: {smtpUsername}");
-                    await client.AuthenticateAsync(smtpUsername, smtpPassword);
-                    _logger.LogInformation($"✅ Authenticated successfully");
+                        _logger.LogInformation($"🔐 Authenticating with username: {smtpUsername}");
+                        await client.AuthenticateAsync(smtpUsername, smtpPassword, cts.Token);
+                        _logger.LogInformation($"✅ Authenticated successfully");
 
-                    _logger.LogInformation($"📤 Sending email to {toEmail}...");
-                    await client.SendAsync(message);
-                    _logger.LogInformation($"✅ Email sent successfully");
+                        _logger.LogInformation($"📤 Sending email to {toEmail}...");
+                        await client.SendAsync(message, cts.Token);
+                        _logger.LogInformation($"✅ Email sent successfully");
 
-                    await client.DisconnectAsync(true);
-                    _logger.LogInformation($"🔌 Disconnected from SMTP server");
+                        await client.DisconnectAsync(true, cts.Token);
+                        _logger.LogInformation($"🔌 Disconnected from SMTP server");
+                    }
                 }
 
                 _logger.LogInformation($"✅ OTP email sent successfully to {toEmail} with code: {otpCode}");
