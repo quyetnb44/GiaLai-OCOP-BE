@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -119,39 +120,99 @@ namespace GiaLaiOCOP.Api.Controllers
             {
                 // 🔹 Gọi API công khai của Vietnam Address API
                 var url = $"{VIETNAM_API_BASE}/p/{provinceCode}?depth=2";
-                var response = await _httpClient.GetAsync(url);
+                
+                HttpResponseMessage response;
+                try
+                {
+                    response = await _httpClient.GetAsync(url);
+                }
+                catch (HttpRequestException httpEx)
+                {
+                    return StatusCode(503, $"Lỗi kết nối đến API công khai: {httpEx.Message}");
+                }
+                catch (TaskCanceledException)
+                {
+                    return StatusCode(504, "Request timeout khi gọi API công khai");
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return StatusCode((int)response.StatusCode, $"Không thể lấy dữ liệu từ API công khai: {response.StatusCode}");
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    return StatusCode((int)response.StatusCode, $"Không thể lấy dữ liệu từ API công khai: {response.StatusCode} - {errorContent}");
                 }
 
                 var jsonString = await response.Content.ReadAsStringAsync();
-                var jsonDoc = JsonDocument.Parse(jsonString);
-                var root = jsonDoc.RootElement;
-
-                // API trả về province object với districts array
-                var districts = new List<LocationDto>();
                 
-                if (root.TryGetProperty("districts", out var districtsElement) && districtsElement.ValueKind == JsonValueKind.Array)
+                if (string.IsNullOrWhiteSpace(jsonString))
                 {
-                    foreach (var district in districtsElement.EnumerateArray())
-                    {
-                        var code = district.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : "";
-                        var name = district.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : "";
-
-                        if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(name))
-                        {
-                            districts.Add(new LocationDto
-                            {
-                                Code = code,
-                                Name = name
-                            });
-                        }
-                    }
+                    return StatusCode(500, "API công khai trả về dữ liệu rỗng");
                 }
 
-                return Ok(districts);
+                JsonDocument? jsonDoc = null;
+                try
+                {
+                    jsonDoc = JsonDocument.Parse(jsonString);
+                }
+                catch (JsonException jsonEx)
+                {
+                    // Log chi tiết để debug
+                    var preview = jsonString.Length > 500 ? jsonString.Substring(0, 500) + "..." : jsonString;
+                    return StatusCode(500, $"Lỗi parse JSON từ API công khai: {jsonEx.Message}. Response preview: {preview}");
+                }
+
+                using (jsonDoc)
+                {
+                    var root = jsonDoc.RootElement;
+                    var districts = new List<LocationDto>();
+                    
+                    // 🔹 API công khai có thể trả về nhiều format:
+                    // Format 1: { "code": "...", "name": "...", "districts": [...] }
+                    // Format 2: [{ "code": "...", "name": "..." }, ...] (array districts trực tiếp)
+                    
+                    if (root.ValueKind == JsonValueKind.Object)
+                    {
+                        // Format 1: Object với districts property
+                        if (root.TryGetProperty("districts", out var districtsElement) && districtsElement.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var district in districtsElement.EnumerateArray())
+                            {
+                                var code = district.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : 
+                                          (district.TryGetProperty("codename", out var codeNameElement) ? codeNameElement.GetString() : "");
+                                var name = district.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : "";
+
+                                if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(name))
+                                {
+                                    districts.Add(new LocationDto
+                                    {
+                                        Code = code,
+                                        Name = name
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    else if (root.ValueKind == JsonValueKind.Array)
+                    {
+                        // Format 2: Array trực tiếp
+                        foreach (var item in root.EnumerateArray())
+                        {
+                            var code = item.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : 
+                                      (item.TryGetProperty("codename", out var codeNameElement) ? codeNameElement.GetString() : "");
+                            var name = item.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : "";
+
+                            if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(name))
+                            {
+                                districts.Add(new LocationDto
+                                {
+                                    Code = code,
+                                    Name = name
+                                });
+                            }
+                        }
+                    }
+
+                    return Ok(districts);
+                }
             }
             catch (HttpRequestException ex)
             {
@@ -163,7 +224,7 @@ namespace GiaLaiOCOP.Api.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Lỗi khi xử lý dữ liệu: {ex.Message}");
+                return StatusCode(500, $"Lỗi khi xử lý dữ liệu: {ex.Message}. StackTrace: {ex.StackTrace}");
             }
         }
 
@@ -183,39 +244,99 @@ namespace GiaLaiOCOP.Api.Controllers
             {
                 // 🔹 Gọi API công khai của Vietnam Address API
                 var url = $"{VIETNAM_API_BASE}/d/{districtCode}?depth=2";
-                var response = await _httpClient.GetAsync(url);
+                
+                HttpResponseMessage response;
+                try
+                {
+                    response = await _httpClient.GetAsync(url);
+                }
+                catch (HttpRequestException httpEx)
+                {
+                    return StatusCode(503, $"Lỗi kết nối đến API công khai: {httpEx.Message}");
+                }
+                catch (TaskCanceledException)
+                {
+                    return StatusCode(504, "Request timeout khi gọi API công khai");
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return StatusCode((int)response.StatusCode, $"Không thể lấy dữ liệu từ API công khai: {response.StatusCode}");
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    return StatusCode((int)response.StatusCode, $"Không thể lấy dữ liệu từ API công khai: {response.StatusCode} - {errorContent}");
                 }
 
                 var jsonString = await response.Content.ReadAsStringAsync();
-                var jsonDoc = JsonDocument.Parse(jsonString);
-                var root = jsonDoc.RootElement;
-
-                // API trả về district object với wards array
-                var wards = new List<LocationDto>();
                 
-                if (root.TryGetProperty("wards", out var wardsElement) && wardsElement.ValueKind == JsonValueKind.Array)
+                if (string.IsNullOrWhiteSpace(jsonString))
                 {
-                    foreach (var ward in wardsElement.EnumerateArray())
-                    {
-                        var code = ward.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : "";
-                        var name = ward.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : "";
-
-                        if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(name))
-                        {
-                            wards.Add(new LocationDto
-                            {
-                                Code = code,
-                                Name = name
-                            });
-                        }
-                    }
+                    return StatusCode(500, "API công khai trả về dữ liệu rỗng");
                 }
 
-                return Ok(wards);
+                JsonDocument? jsonDoc = null;
+                try
+                {
+                    jsonDoc = JsonDocument.Parse(jsonString);
+                }
+                catch (JsonException jsonEx)
+                {
+                    // Log chi tiết để debug
+                    var preview = jsonString.Length > 500 ? jsonString.Substring(0, 500) + "..." : jsonString;
+                    return StatusCode(500, $"Lỗi parse JSON từ API công khai: {jsonEx.Message}. Response preview: {preview}");
+                }
+
+                using (jsonDoc)
+                {
+                    var root = jsonDoc.RootElement;
+                    var wards = new List<LocationDto>();
+                    
+                    // 🔹 API công khai có thể trả về nhiều format:
+                    // Format 1: { "code": "...", "name": "...", "wards": [...] }
+                    // Format 2: [{ "code": "...", "name": "..." }, ...] (array wards trực tiếp)
+                    
+                    if (root.ValueKind == JsonValueKind.Object)
+                    {
+                        // Format 1: Object với wards property
+                        if (root.TryGetProperty("wards", out var wardsElement) && wardsElement.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var ward in wardsElement.EnumerateArray())
+                            {
+                                var code = ward.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : 
+                                          (ward.TryGetProperty("codename", out var codeNameElement) ? codeNameElement.GetString() : "");
+                                var name = ward.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : "";
+
+                                if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(name))
+                                {
+                                    wards.Add(new LocationDto
+                                    {
+                                        Code = code,
+                                        Name = name
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    else if (root.ValueKind == JsonValueKind.Array)
+                    {
+                        // Format 2: Array trực tiếp
+                        foreach (var item in root.EnumerateArray())
+                        {
+                            var code = item.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : 
+                                      (item.TryGetProperty("codename", out var codeNameElement) ? codeNameElement.GetString() : "");
+                            var name = item.TryGetProperty("name", out var nameElement) ? nameElement.GetString() : "";
+
+                            if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(name))
+                            {
+                                wards.Add(new LocationDto
+                                {
+                                    Code = code,
+                                    Name = name
+                                });
+                            }
+                        }
+                    }
+
+                    return Ok(wards);
+                }
             }
             catch (HttpRequestException ex)
             {
@@ -227,7 +348,7 @@ namespace GiaLaiOCOP.Api.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Lỗi khi xử lý dữ liệu: {ex.Message}");
+                return StatusCode(500, $"Lỗi khi xử lý dữ liệu: {ex.Message}. StackTrace: {ex.StackTrace}");
             }
         }
     }
