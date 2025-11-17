@@ -3,7 +3,13 @@
     public class CreateOrderDto
     {
         // 🔥 Xóa UserId vì lấy từ token
-        public string ShippingAddress { get; set; } = string.Empty;
+        
+        // 🔹 Địa chỉ giao hàng (optional - dùng nếu không có ShippingAddressId)
+        public string? ShippingAddress { get; set; }
+        
+        // 🔹 ID của địa chỉ đã lưu trong ShippingAddresses (optional - ưu tiên hơn ShippingAddress)
+        public int? ShippingAddressId { get; set; }
+        
         public List<OrderItemDto> Items { get; set; } = new();
         public string PaymentMethod { get; set; } = "COD"; // COD, BankTransfer
     }

@@ -193,9 +193,31 @@ namespace GiaLaiOCOP.Api.Controllers
             if (userId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
-            // 🔹 Validation: ShippingAddress
-            if (string.IsNullOrEmpty(dto.ShippingAddress))
-                return BadRequest("Địa chỉ giao hàng là bắt buộc.");
+            // 🔹 Validation: ShippingAddress hoặc ShippingAddressId phải có
+            string? finalShippingAddress = null;
+            int? shippingAddressId = null;
+
+            if (dto.ShippingAddressId.HasValue)
+            {
+                // Nếu có ShippingAddressId, validate và lấy địa chỉ từ ShippingAddresses
+                var shippingAddress = await _context.ShippingAddresses
+                    .FirstOrDefaultAsync(sa => sa.Id == dto.ShippingAddressId.Value && sa.UserId == userId.Value);
+
+                if (shippingAddress == null)
+                    return BadRequest("Địa chỉ giao hàng không tồn tại hoặc không thuộc về bạn.");
+
+                shippingAddressId = shippingAddress.Id;
+                finalShippingAddress = shippingAddress.Address; // Lấy địa chỉ đầy đủ từ ShippingAddress
+            }
+            else if (!string.IsNullOrWhiteSpace(dto.ShippingAddress))
+            {
+                // Nếu không có ShippingAddressId nhưng có ShippingAddress string (backward compatibility)
+                finalShippingAddress = dto.ShippingAddress.Trim();
+            }
+            else
+            {
+                return BadRequest("Vui lòng cung cấp địa chỉ giao hàng (ShippingAddress hoặc ShippingAddressId).");
+            }
 
             // 🔹 Validation: Items không rỗng
             if (dto.Items == null || dto.Items.Count == 0)
@@ -245,7 +267,8 @@ namespace GiaLaiOCOP.Api.Controllers
             var order = new Order
             {
                 UserId = userId.Value,
-                ShippingAddress = dto.ShippingAddress,
+                ShippingAddress = finalShippingAddress, // Địa chỉ đầy đủ (string) để backward compatibility
+                ShippingAddressId = shippingAddressId, // ID của địa chỉ đã lưu (nếu có)
                 OrderDate = DateTime.UtcNow,
                 Status = "Pending",
                 PaymentMethod = paymentMethod,
