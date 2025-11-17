@@ -44,11 +44,11 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod());
 });
 
-// 🔹 Add HttpClient for calling external APIs
-builder.Services.AddHttpClient();
-
 // 🔹 Add Email Service
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// 🔹 Add HttpClient for external API calls (Vietnam Address API)
+builder.Services.AddHttpClient();
 
 // 🔹 Add Controllers và Swagger với JSON options
 builder.Services.AddControllers()
@@ -163,14 +163,9 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine("SystemAdmin mặc định đã được tạo: admin@system.com / 123456");
     }
 
-    // 4️⃣ Cập nhật IsEmailVerified = true cho user cũ (chỉ user tạo TRƯỚC khi có tính năng xác thực email)
-    // CHỈ update user cũ - user tạo trước ngày deploy tính năng xác thực email
-    // ⚠️ THAY ĐỔI NGÀY NÀY thành ngày bạn deploy tính năng xác thực email (ví dụ: 2024-12-20)
-    var emailVerificationFeatureDate = new DateTime(2024, 12, 20, 0, 0, 0, DateTimeKind.Utc); // ⚠️ ĐỔI NGÀY NÀY!
-
+    // 4️⃣ Cập nhật IsEmailVerified = true cho user cũ (tạo trước khi có tính năng xác thực email)
     var usersNotVerified = db.Users
-        .Where(u => !u.IsEmailVerified 
-                    && u.CreatedAt < emailVerificationFeatureDate) // CHỈ update user tạo TRƯỚC ngày này
+        .Where(u => !u.IsEmailVerified)
         .ToList();
 
     if (usersNotVerified.Any())
@@ -180,11 +175,7 @@ using (var scope = app.Services.CreateScope())
             user.IsEmailVerified = true;
         }
         db.SaveChanges();
-        Console.WriteLine($"✅ Đã cập nhật IsEmailVerified = true cho {usersNotVerified.Count} user cũ (tạo trước {emailVerificationFeatureDate:yyyy-MM-dd}).");
-    }
-    else
-    {
-        Console.WriteLine($"ℹ️ Không có user cũ cần cập nhật IsEmailVerified.");
+        Console.WriteLine($"Đã cập nhật IsEmailVerified = true cho {usersNotVerified.Count} user cũ.");
     }
 
     // 5️⃣ Seed dữ liệu mẫu cho Map (chỉ trong Development)

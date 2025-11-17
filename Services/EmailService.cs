@@ -3,7 +3,6 @@ using MailKit.Security;
 using MimeKit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using System.Threading;
 
 namespace GiaLaiOCOP.Api.Services
 {
@@ -27,22 +26,16 @@ namespace GiaLaiOCOP.Api.Services
         {
             try
             {
-                _logger.LogInformation($"🔹 Starting to send OTP email to {toEmail} for purpose: {purpose}");
-
                 var smtpHost = _configuration["Email:SmtpHost"];
-                var smtpPortStr = _configuration["Email:SmtpPort"] ?? "587";
-                var smtpPort = int.Parse(smtpPortStr);
+                var smtpPort = int.Parse(_configuration["Email:SmtpPort"] ?? "587");
                 var smtpUsername = _configuration["Email:SmtpUsername"];
                 var smtpPassword = _configuration["Email:SmtpPassword"];
                 var fromEmail = _configuration["Email:FromEmail"] ?? smtpUsername;
                 var fromName = _configuration["Email:FromName"] ?? "GiaLai OCOP";
 
-                _logger.LogInformation($"📧 Email Config - Host: {smtpHost}, Port: {smtpPort}, From: {fromEmail}, To: {toEmail}");
-
                 if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
                 {
                     _logger.LogError("❌ Email configuration is missing! Please configure Email settings in appsettings.json");
-                    _logger.LogError($"Missing values - Host: {string.IsNullOrEmpty(smtpHost)}, Username: {string.IsNullOrEmpty(smtpUsername)}, Password: {string.IsNullOrEmpty(smtpPassword)}");
                     _logger.LogError("Required: Email:SmtpHost, Email:SmtpUsername, Email:SmtpPassword");
                     return false;
                 }
@@ -106,55 +99,23 @@ namespace GiaLaiOCOP.Api.Services
 
                 using (var client = new SmtpClient())
                 {
-                    // Set timeout cho SMTP operations (30 giây)
-                    client.Timeout = 30000; // 30 seconds
-                    
                     // Hỗ trợ cả port 587 (StartTls) và 465 (SSL)
                     SecureSocketOptions socketOptions = smtpPort == 465 
                         ? SecureSocketOptions.SslOnConnect 
                         : SecureSocketOptions.StartTls;
 
-                    _logger.LogInformation($"🔌 Connecting to SMTP server {smtpHost}:{smtpPort} with {socketOptions} (timeout: 30s)");
-                    
-                    // Thử kết nối với timeout
-                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
-                    {
-                        try
-                        {
-                            await client.ConnectAsync(smtpHost, smtpPort, socketOptions, cts.Token);
-                            _logger.LogInformation($"✅ Connected to SMTP server");
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            _logger.LogError($"❌ Connection timeout after 30 seconds to {smtpHost}:{smtpPort}");
-                            throw new TimeoutException($"Connection timeout to SMTP server {smtpHost}:{smtpPort}. Try using port 465 with SSL or check firewall settings.");
-                        }
-
-                        _logger.LogInformation($"🔐 Authenticating with username: {smtpUsername}");
-                        await client.AuthenticateAsync(smtpUsername, smtpPassword, cts.Token);
-                        _logger.LogInformation($"✅ Authenticated successfully");
-
-                        _logger.LogInformation($"📤 Sending email to {toEmail}...");
-                        await client.SendAsync(message, cts.Token);
-                        _logger.LogInformation($"✅ Email sent successfully");
-
-                        await client.DisconnectAsync(true, cts.Token);
-                        _logger.LogInformation($"🔌 Disconnected from SMTP server");
-                    }
+                    await client.ConnectAsync(smtpHost, smtpPort, socketOptions);
+                    await client.AuthenticateAsync(smtpUsername, smtpPassword);
+                    await client.SendAsync(message);
+                    await client.DisconnectAsync(true);
                 }
 
-                _logger.LogInformation($"✅ OTP email sent successfully to {toEmail} with code: {otpCode}");
+                _logger.LogInformation($"OTP email sent successfully to {toEmail}");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"❌ Failed to send OTP email to {toEmail}");
-                _logger.LogError($"❌ Error Type: {ex.GetType().Name}");
-                _logger.LogError($"❌ Error Message: {ex.Message}");
-                if (ex.InnerException != null)
-                {
-                    _logger.LogError($"❌ Inner Exception: {ex.InnerException.Message}");
-                }
+                _logger.LogError(ex, $"Failed to send OTP email to {toEmail}");
                 return false;
             }
         }
