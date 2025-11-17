@@ -23,6 +23,7 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<Category> Categories { get; set; }
         public DbSet<EmailVerification> EmailVerifications { get; set; }
         public DbSet<ShippingAddress> ShippingAddresses { get; set; }
+        public DbSet<Image> Images { get; set; }
 
 
 
@@ -107,6 +108,34 @@ namespace GiaLaiOCOP.Api.Data
                 .HasIndex(sa => new { sa.UserId, sa.IsDefault })
                 .IsUnique()
                 .HasFilter("\"IsDefault\" = true");
+
+            // 🟩 Cấu hình quan hệ Image - User (1-n) cho avatar
+            modelBuilder.Entity<Image>()
+                .HasOne(img => img.User)
+                .WithMany(u => u.Images)
+                .HasForeignKey(img => img.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🟩 Cấu hình quan hệ Image - Product (1-n) cho ảnh sản phẩm
+            modelBuilder.Entity<Image>()
+                .HasOne(img => img.Product)
+                .WithMany(p => p.Images)
+                .HasForeignKey(img => img.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🟩 Cấu hình quan hệ Image - Enterprise (1-n) cho ảnh doanh nghiệp
+            modelBuilder.Entity<Image>()
+                .HasOne(img => img.Enterprise)
+                .WithMany(e => e.Images)
+                .HasForeignKey(img => img.EnterpriseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🟩 Cấu hình quan hệ Image - UploadedByUser (1-n)
+            modelBuilder.Entity<Image>()
+                .HasOne(img => img.UploadedByUser)
+                .WithMany()
+                .HasForeignKey(img => img.UploadedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

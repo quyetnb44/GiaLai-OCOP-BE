@@ -36,5 +36,9 @@ namespace GiaLaiOCOP.Api.Models
         // 🔹 Danh sách địa chỉ giao hàng đã lưu
         [JsonIgnore]
         public ICollection<ShippingAddress> ShippingAddresses { get; set; } = new List<ShippingAddress>();
+
+        // 🔹 Ảnh đại diện (avatar)
+        [JsonIgnore]
+        public ICollection<Image> Images { get; set; } = new List<Image>();
     }
 }

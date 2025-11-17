@@ -43,6 +43,9 @@ namespace GiaLaiOCOP.Api.Models
         // 1 doanh nghiệp có nhiều payments
         [JsonIgnore]
         public ICollection<Payment>? Payments { get; set; }
+        // 1 doanh nghiệp có nhiều ảnh
+        [JsonIgnore]
+        public ICollection<Image>? Images { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }

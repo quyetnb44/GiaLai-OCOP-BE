@@ -31,6 +31,10 @@ namespace GiaLaiOCOP.Api.Models
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
         public ICollection<Review> Reviews { get; set; } = new List<Review>();
         
+        // 🔹 Danh sách ảnh sản phẩm
+        [JsonIgnore]
+        public ICollection<Image> Images { get; set; } = new List<Image>();
+        
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
     }

@@ -8,7 +8,7 @@ namespace GiaLaiOCOP.Api.Dtos
         public int Id { get; set; }                     // Id của đơn hàng
         public int UserId { get; set; }                 // Người mua
         public DateTime OrderDate { get; set; }         // Ngày đặt
-3        public string? ShippingAddress { get; set; }    // Địa chỉ giao hàng (từ ShippingAddressDetail hoặc ShippingAddress string)
+        public string? ShippingAddress { get; set; }    // Địa chỉ giao hàng (từ ShippingAddressDetail hoặc ShippingAddress string)
         public int? ShippingAddressId { get; set; }      // ID địa chỉ từ bảng ShippingAddresses (nếu có)
         public decimal TotalAmount { get; set; }        // Tổng tiền
         public string? Status { get; set; }             // Trạng thái
