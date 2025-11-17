@@ -9,7 +9,7 @@ namespace GiaLaiOCOP.Api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "SystemAdmin")]
+    [Authorize(Roles = "SystemAdmin,EnterpriseAdmin")]
     public class CategoriesController : ControllerBase
     {
         private readonly AppDbContext _context;
