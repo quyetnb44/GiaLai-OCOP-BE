@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using GiaLaiOCOP.Api.Data;
@@ -17,6 +18,52 @@ namespace GiaLaiOCOP.Api.Controllers
         private readonly AppDbContext _context;
         public UsersController(AppDbContext context) => _context = context;
 
+        private async Task<int?> GetCurrentUserIdAsync()
+        {
+            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (string.IsNullOrWhiteSpace(claimValue))
+                return null;
+
+            if (int.TryParse(claimValue, out var userId))
+                return userId;
+
+            if (claimValue.Contains("@"))
+            {
+                var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
+                return currentUser?.Id;
+            }
+
+            return null;
+        }
+
+        private static UserDto MapUserToDto(User user)
+        {
+            return new UserDto
+            {
+                Id = user.Id,
+                Name = user.Name,
+                Email = user.Email,
+                Role = user.Role,
+                EnterpriseId = user.EnterpriseId,
+                Enterprise = user.Enterprise == null ? null : new EnterpriseDto
+                {
+                    Id = user.Enterprise.Id,
+                    Name = user.Enterprise.Name,
+                    Description = user.Enterprise.Description
+                },
+                IsEmailVerified = user.IsEmailVerified,
+                PhoneNumber = user.PhoneNumber,
+                Gender = user.Gender,
+                DateOfBirth = user.DateOfBirth,
+                ShippingAddress = user.ShippingAddress,
+                AvatarUrl = user.AvatarUrl,
+                CreatedAt = user.CreatedAt,
+                UpdatedAt = user.UpdatedAt
+            };
+        }
+
         // 🔹 GET: api/users
         // Chỉ SystemAdmin xem tất cả user
         [Authorize(Roles = "SystemAdmin")]
@@ -27,21 +74,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 .Include(u => u.Enterprise)
                 .ToListAsync();
 
-            var usersDto = users.Select(u => new UserDto
-            {
-                Id = u.Id,
-                Name = u.Name,
-                Email = u.Email,
-                Role = u.Role,
-                EnterpriseId = u.EnterpriseId,
-                IsEmailVerified = u.IsEmailVerified,
-                Enterprise = u.Enterprise == null ? null : new EnterpriseDto
-                {
-                    Id = u.Enterprise.Id,
-                    Name = u.Enterprise.Name,
-                    Description = u.Enterprise.Description
-                }
-            }).ToList();
+            var usersDto = users.Select(MapUserToDto).ToList();
 
             return Ok(usersDto);
         }
@@ -50,21 +83,7 @@ namespace GiaLaiOCOP.Api.Controllers
         [HttpGet("me")]
         public async Task<ActionResult<UserDto>> GetCurrentUser()
         {
-            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
-
-            int? currentUserId = null;
-            if (!string.IsNullOrWhiteSpace(claimValue))
-            {
-                if (int.TryParse(claimValue, out var userId))
-                    currentUserId = userId;
-                else if (claimValue.Contains("@"))
-                {
-                    var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
-                    currentUserId = currentUser?.Id;
-                }
-            }
-
+            var currentUserId = await GetCurrentUserIdAsync();
             if (currentUserId == null) return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             var user = await _context.Users
@@ -73,23 +92,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (user == null) return NotFound();
 
-            var userDto = new UserDto
-            {
-                Id = user.Id,
-                Name = user.Name,
-                Email = user.Email,
-                Role = user.Role,
-                EnterpriseId = user.EnterpriseId,
-                IsEmailVerified = user.IsEmailVerified,
-                Enterprise = user.Enterprise == null ? null : new EnterpriseDto
-                {
-                    Id = user.Enterprise.Id,
-                    Name = user.Enterprise.Name,
-                    Description = user.Enterprise.Description
-                }
-            };
-
-            return Ok(userDto);
+            return Ok(MapUserToDto(user));
         }
 
         // 🔹 GET: api/users/{id}
@@ -101,44 +104,14 @@ namespace GiaLaiOCOP.Api.Controllers
                                            .FirstOrDefaultAsync(u => u.Id == id);
             if (targetUser == null) return NotFound();
 
-            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
-
-            int? currentUserId = null;
-            if (!string.IsNullOrWhiteSpace(claimValue))
-            {
-                if (int.TryParse(claimValue, out var userId))
-                    currentUserId = userId;
-                else if (claimValue.Contains("@"))
-                {
-                    var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
-                    currentUserId = currentUser?.Id;
-                }
-            }
-
+            var currentUserId = await GetCurrentUserIdAsync();
             if (currentUserId == null) return Forbid();
 
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
             if (role != "SystemAdmin" && currentUserId.Value != id)
                 return Forbid();
 
-            var userDto = new UserDto
-            {
-                Id = targetUser.Id,
-                Name = targetUser.Name,
-                Email = targetUser.Email,
-                Role = targetUser.Role,
-                EnterpriseId = targetUser.EnterpriseId,
-                IsEmailVerified = targetUser.IsEmailVerified,
-                Enterprise = targetUser.Enterprise == null ? null : new EnterpriseDto
-                {
-                    Id = targetUser.Enterprise.Id,
-                    Name = targetUser.Enterprise.Name,
-                    Description = targetUser.Enterprise.Description
-                }
-            };
-
-            return Ok(userDto);
+            return Ok(MapUserToDto(targetUser));
         }
 
         // 🔹 POST: api/users/enterprise-admin
@@ -171,21 +144,8 @@ namespace GiaLaiOCOP.Api.Controllers
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            var userDto = new UserDto
-            {
-                Id = user.Id,
-                Name = user.Name,
-                Email = user.Email,
-                Role = user.Role,
-                EnterpriseId = user.EnterpriseId,
-                IsEmailVerified = user.IsEmailVerified,
-                Enterprise = new EnterpriseDto
-                {
-                    Id = enterprise.Id,
-                    Name = enterprise.Name,
-                    Description = enterprise.Description
-                }
-            };
+            user.Enterprise = enterprise;
+            var userDto = MapUserToDto(user);
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, userDto);
         }
@@ -215,14 +175,7 @@ namespace GiaLaiOCOP.Api.Controllers
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            var userDto = new UserDto
-            {
-                Id = user.Id,
-                Name = user.Name,
-                Email = user.Email,
-                Role = user.Role,
-                IsEmailVerified = user.IsEmailVerified
-            };
+            var userDto = MapUserToDto(user);
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, userDto);
         }
@@ -234,21 +187,7 @@ namespace GiaLaiOCOP.Api.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
-
-            int? currentUserId = null;
-            if (!string.IsNullOrWhiteSpace(claimValue))
-            {
-                if (int.TryParse(claimValue, out var userId))
-                    currentUserId = userId;
-                else if (claimValue.Contains("@"))
-                {
-                    var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == claimValue);
-                    currentUserId = currentUser?.Id;
-                }
-            }
-
+            var currentUserId = await GetCurrentUserIdAsync();
             if (currentUserId == null)
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
@@ -259,44 +198,83 @@ namespace GiaLaiOCOP.Api.Controllers
             if (user == null)
                 return NotFound();
 
-            // Cập nhật tên
-            user.Name = dto.Name.Trim();
+            var hasChanges = false;
 
-            // Cập nhật email nếu có và khác email hiện tại
-            if (!string.IsNullOrWhiteSpace(dto.Email) && dto.Email.Trim().ToLower() != user.Email.ToLower())
+            if (!string.IsNullOrWhiteSpace(dto.Name) && dto.Name.Trim() != user.Name)
             {
+                user.Name = dto.Name.Trim();
+                hasChanges = true;
+            }
+
+            if (dto.Email != null)
+            {
+                if (string.IsNullOrWhiteSpace(dto.Email))
+                    return BadRequest("Email không hợp lệ.");
+
                 var newEmail = dto.Email.Trim().ToLower();
-                if (await _context.Users.AnyAsync(u => u.Email == newEmail && u.Id != user.Id))
-                    return Conflict("Email đã được sử dụng bởi người dùng khác.");
-
-                user.Email = newEmail;
-            }
-
-            // Cập nhật mật khẩu nếu có
-            if (!string.IsNullOrWhiteSpace(dto.Password))
-            {
-                user.Password = BCrypt.Net.BCrypt.HashPassword(dto.Password);
-            }
-
-            await _context.SaveChangesAsync();
-
-            var userDto = new UserDto
-            {
-                Id = user.Id,
-                Name = user.Name,
-                Email = user.Email,
-                Role = user.Role,
-                EnterpriseId = user.EnterpriseId,
-                IsEmailVerified = user.IsEmailVerified,
-                Enterprise = user.Enterprise == null ? null : new EnterpriseDto
+                if (!newEmail.Equals(user.Email, StringComparison.OrdinalIgnoreCase))
                 {
-                    Id = user.Enterprise.Id,
-                    Name = user.Enterprise.Name,
-                    Description = user.Enterprise.Description
-                }
-            };
+                    if (await _context.Users.AnyAsync(u => u.Email == newEmail && u.Id != user.Id))
+                        return Conflict("Email đã được sử dụng bởi người dùng khác.");
 
-            return Ok(userDto);
+                    user.Email = newEmail;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.PhoneNumber != null)
+            {
+                var normalizedPhone = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+                if (normalizedPhone != user.PhoneNumber)
+                {
+                    user.PhoneNumber = normalizedPhone;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.Gender != null)
+            {
+                var normalizedGender = string.IsNullOrWhiteSpace(dto.Gender) ? null : dto.Gender.Trim();
+                if (normalizedGender != user.Gender)
+                {
+                    user.Gender = normalizedGender;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.DateOfBirth.HasValue && dto.DateOfBirth != user.DateOfBirth)
+            {
+                user.DateOfBirth = dto.DateOfBirth;
+                hasChanges = true;
+            }
+
+            if (dto.ShippingAddress != null)
+            {
+                var normalizedAddress = string.IsNullOrWhiteSpace(dto.ShippingAddress) ? null : dto.ShippingAddress.Trim();
+                if (normalizedAddress != user.ShippingAddress)
+                {
+                    user.ShippingAddress = normalizedAddress;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.AvatarUrl != null)
+            {
+                var normalizedAvatar = string.IsNullOrWhiteSpace(dto.AvatarUrl) ? null : dto.AvatarUrl.Trim();
+                if (normalizedAvatar != user.AvatarUrl)
+                {
+                    user.AvatarUrl = normalizedAvatar;
+                    hasChanges = true;
+                }
+            }
+
+            if (hasChanges)
+            {
+                user.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(MapUserToDto(user));
         }
 
         // 🔹 PUT: api/users/{id} - Chỉ SystemAdmin

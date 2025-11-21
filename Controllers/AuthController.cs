@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -47,6 +48,25 @@ namespace GiaLaiOCOP.Api.Controllers
 
             _context.EmailVerifications.RemoveRange(expiredOtps);
             await _context.SaveChangesAsync();
+        }
+
+        private async Task<User?> GetUserFromClaimsAsync()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrWhiteSpace(userIdClaim) && int.TryParse(userIdClaim, out var userId))
+            {
+                return await _context.Users.FindAsync(userId);
+            }
+
+            var emailClaim = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                             ?? User.FindFirst(ClaimTypes.Email)?.Value;
+
+            if (!string.IsNullOrWhiteSpace(emailClaim))
+            {
+                return await _context.Users.FirstOrDefaultAsync(u => u.Email == emailClaim);
+            }
+
+            return null;
         }
 
         private string GetJwtKey()
@@ -159,6 +179,31 @@ namespace GiaLaiOCOP.Api.Controllers
             var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
 
             return Ok(new AuthResponseDto { Token = tokenString, Expires = expires });
+        }
+
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var user = await GetUserFromClaimsAsync();
+            if (user == null)
+                return Unauthorized(new { message = "Phiên đăng nhập đã hết hạn hoặc không hợp lệ" });
+
+            if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.Password))
+                return BadRequest(new { message = "Mật khẩu hiện tại không đúng" });
+
+            if (BCrypt.Net.BCrypt.Verify(dto.NewPassword, user.Password))
+                return BadRequest(new { message = "Mật khẩu mới phải khác mật khẩu hiện tại" });
+
+            user.Password = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Đổi mật khẩu thành công" });
         }
 
         // 🔹 POST /api/auth/send-otp - Gửi mã OTP đến email

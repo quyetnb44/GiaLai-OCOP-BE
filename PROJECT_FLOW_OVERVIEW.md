@@ -105,6 +105,13 @@ Tài liệu này tổng hợp nhanh các luồng nghiệp vụ chính và chức
 
 ## ✅ Check-list tích hợp & kiểm thử
 
+### Authentication & User Management
+- [ ] Test đăng ký và đăng nhập (`POST /api/auth/register`, `POST /api/auth/login`).
+- [ ] Test đổi mật khẩu (`POST /api/auth/change-password`) - kiểm tra mật khẩu hiện tại đúng/sai.
+- [ ] Test lấy thông tin profile hiện tại (`GET /api/users/me`).
+- [ ] Test cập nhật profile (`PUT /api/users/me`) - cập nhật Name, Email, PhoneNumber, Gender, DateOfBirth, ShippingAddress, AvatarUrl.
+
+### Business Flows
 - [ ] Test luồng OCOP từ Customer → Admin (gửi, duyệt/từ chối).
 - [ ] CRUD sản phẩm với EnterpriseAdmin (bao gồm case chỉnh sửa → reset `PendingApproval`, xóa khi chưa có đơn).
 - [ ] Duyệt/từ chối sản phẩm qua `POST /api/products/{id}/status`.

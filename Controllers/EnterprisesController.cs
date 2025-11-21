@@ -85,7 +85,16 @@ namespace GiaLaiOCOP.Api.Controllers
                     Id = u.Id,
                     Name = u.Name,
                     Email = u.Email,
-                    IsEmailVerified = u.IsEmailVerified
+                    Role = u.Role,
+                    EnterpriseId = u.EnterpriseId,
+                    IsEmailVerified = u.IsEmailVerified,
+                    PhoneNumber = u.PhoneNumber,
+                    Gender = u.Gender,
+                    DateOfBirth = u.DateOfBirth,
+                    ShippingAddress = u.ShippingAddress,
+                    AvatarUrl = u.AvatarUrl,
+                    CreatedAt = u.CreatedAt,
+                    UpdatedAt = u.UpdatedAt
                 }).ToList()
             };
         }

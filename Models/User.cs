@@ -12,6 +12,11 @@ namespace GiaLaiOCOP.Api.Models
         public string Name { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
+        public string? PhoneNumber { get; set; }
+        public string? Gender { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? ShippingAddress { get; set; }
+        public string? AvatarUrl { get; set; }
 
         // Phân quyền
         // "SystemAdmin" → bạn (người sở hữu hệ thống)
@@ -24,6 +29,7 @@ namespace GiaLaiOCOP.Api.Models
 
         // Xác thực email
         public bool IsEmailVerified { get; set; } = false;
+        public DateTime? UpdatedAt { get; set; }
 
         // Quan hệ: 1 user có thể có nhiều đơn hàng
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON

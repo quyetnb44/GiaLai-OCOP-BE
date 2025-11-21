@@ -22,8 +22,13 @@ Backend API cho hệ thống quản lý sản phẩm OCOP (One Commune One Produ
 
 ### 🔐 Authentication & Authorization
 - Đăng ký/Đăng nhập với JWT
+- Đổi mật khẩu (yêu cầu mật khẩu hiện tại)
 - Phân quyền: Customer, EnterpriseAdmin, SystemAdmin
 - Bảo mật mật khẩu với BCrypt
+
+### 👤 Quản lý Profile
+- Xem thông tin profile cá nhân
+- Cập nhật thông tin cá nhân (tên, email, số điện thoại, giới tính, ngày sinh, địa chỉ giao hàng, avatar)
 
 ### 🛒 Quản lý đơn hàng
 - Tạo đơn hàng (Customer)
@@ -270,6 +275,7 @@ GiaLai-OCOP-BE/
 |--------|----------|-------|------|
 | POST | `/api/auth/register` | Đăng ký tài khoản mới | Public |
 | POST | `/api/auth/login` | Đăng nhập, nhận JWT token | Public |
+| POST | `/api/auth/change-password` | Đổi mật khẩu | Authorized |
 
 ### Products
 
@@ -326,7 +332,9 @@ GiaLai-OCOP-BE/
 | Method | Endpoint | Mô tả | Auth |
 |--------|----------|-------|------|
 | GET | `/api/users` | Danh sách users | SystemAdmin |
+| GET | `/api/users/me` | Thông tin profile hiện tại | Authorized |
 | GET | `/api/users/{id}` | Chi tiết user | SystemAdmin/User (chính mình) |
+| PUT | `/api/users/me` | Cập nhật profile | Authorized |
 
 **Lưu ý:** Xem chi tiết API trong Swagger UI hoặc các file documentation:
 - `PAYMENT_API_DOCUMENTATION.md`

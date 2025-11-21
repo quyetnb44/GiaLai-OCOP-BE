@@ -9,6 +9,8 @@ Tài liệu dành cho đội frontend/QA để hiểu rõ các module backend hi
 | Nhóm | Chức năng chính | Endpoint tiêu biểu | Ghi chú |
 |------|-----------------|--------------------|--------|
 | Authentication | Đăng ký, đăng nhập, phát JWT | `POST /api/auth/register`, `POST /api/auth/login` | Mật khẩu hash bằng BCrypt, role trả về trong token |
+| Authentication | Đổi mật khẩu | `POST /api/auth/change-password` | Yêu cầu mật khẩu hiện tại, kiểm tra xác thực |
+| User Profile | Cập nhật thông tin cá nhân | `PUT /api/users/me`, `GET /api/users/me` | Cho phép cập nhật Name, Email, PhoneNumber, Gender, DateOfBirth, ShippingAddress, AvatarUrl |
 | Hồ sơ OCOP | Customer gửi hồ sơ doanh nghiệp OCOP | `POST /api/enterpriseapplications` | Validation đầy đủ, chặn gửi trùng khi còn Pending |
 | Duyệt doanh nghiệp | SystemAdmin phê duyệt/từ chối | `PUT /api/enterpriseapplications/{id}/approve|reject` | Phê duyệt tự tạo Enterprise, gán user thành EnterpriseAdmin |
 | Sản phẩm OCOP | EnterpriseAdmin CRUD sản phẩm | `POST/PUT/DELETE /api/products` | Trạng thái tự reset `PendingApproval`, chỉ SystemAdmin duyệt |
@@ -112,6 +114,8 @@ Tài liệu dành cho đội frontend/QA để hiểu rõ các module backend hi
   - [ ] Seed dev (`MapSeedData`) tạo mẫu sản phẩm đã `Approved`.
   - [ ] Cập nhật frontend để lọc theo `status`, `category`.
   - [ ] Test 3 luồng nghiệp vụ end-to-end.
+  - [ ] Test chức năng đổi mật khẩu (`POST /api/auth/change-password`).
+  - [ ] Test chức năng cập nhật profile (`PUT /api/users/me`, `GET /api/users/me`).
 
 ---
 
