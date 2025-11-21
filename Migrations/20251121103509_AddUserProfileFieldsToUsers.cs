@@ -11,41 +11,41 @@ namespace GiaLaiOCOP.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "AvatarUrl",
-                table: "Users",
-                type: "text",
-                nullable: true);
+            // Sử dụng SQL để kiểm tra và thêm cột nếu chưa tồn tại
+            migrationBuilder.Sql(@"
+                DO $$ 
+                BEGIN
+                    -- Kiểm tra và thêm AvatarUrl nếu chưa tồn tại
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Users' AND column_name = 'AvatarUrl') THEN
+                        ALTER TABLE ""Users"" ADD COLUMN ""AvatarUrl"" text NULL;
+                    END IF;
 
-            migrationBuilder.AddColumn<DateTime>(
-                name: "DateOfBirth",
-                table: "Users",
-                type: "timestamp with time zone",
-                nullable: true);
+                    -- Kiểm tra và thêm DateOfBirth nếu chưa tồn tại
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Users' AND column_name = 'DateOfBirth') THEN
+                        ALTER TABLE ""Users"" ADD COLUMN ""DateOfBirth"" timestamp with time zone NULL;
+                    END IF;
 
-            migrationBuilder.AddColumn<string>(
-                name: "Gender",
-                table: "Users",
-                type: "text",
-                nullable: true);
+                    -- Kiểm tra và thêm Gender nếu chưa tồn tại
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Users' AND column_name = 'Gender') THEN
+                        ALTER TABLE ""Users"" ADD COLUMN ""Gender"" text NULL;
+                    END IF;
 
-            migrationBuilder.AddColumn<string>(
-                name: "PhoneNumber",
-                table: "Users",
-                type: "text",
-                nullable: true);
+                    -- Kiểm tra và thêm PhoneNumber nếu chưa tồn tại
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Users' AND column_name = 'PhoneNumber') THEN
+                        ALTER TABLE ""Users"" ADD COLUMN ""PhoneNumber"" text NULL;
+                    END IF;
 
-            migrationBuilder.AddColumn<string>(
-                name: "ShippingAddress",
-                table: "Users",
-                type: "text",
-                nullable: true);
+                    -- Kiểm tra và thêm ShippingAddress nếu chưa tồn tại
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Users' AND column_name = 'ShippingAddress') THEN
+                        ALTER TABLE ""Users"" ADD COLUMN ""ShippingAddress"" text NULL;
+                    END IF;
 
-            migrationBuilder.AddColumn<DateTime>(
-                name: "UpdatedAt",
-                table: "Users",
-                type: "timestamp with time zone",
-                nullable: true);
+                    -- Kiểm tra và thêm UpdatedAt nếu chưa tồn tại
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Users' AND column_name = 'UpdatedAt') THEN
+                        ALTER TABLE ""Users"" ADD COLUMN ""UpdatedAt"" timestamp with time zone NULL;
+                    END IF;
+                END $$;
+            ");
         }
 
         /// <inheritdoc />
