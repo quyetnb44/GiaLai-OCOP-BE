@@ -341,6 +341,9 @@ namespace GiaLaiOCOP.Api.Controllers
                 .Include(u => u.Ward)
                 .FirstOrDefaultAsync(u => u.Id == currentUserId.Value);
 
+            if (user == null)
+                return NotFound("Không tìm thấy người dùng.");
+
             return Ok(MapUserToDto(user));
         }
 
