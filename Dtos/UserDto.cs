@@ -18,4 +18,10 @@ public class UserDto
     public string? AvatarUrl { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    
+    // Địa chỉ chi tiết
+    public int? ProvinceId { get; set; }
+    public int? DistrictId { get; set; }
+    public int? WardId { get; set; }
+    public string? AddressDetail { get; set; }
 }

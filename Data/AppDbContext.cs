@@ -24,6 +24,9 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<EmailVerification> EmailVerifications { get; set; }
         public DbSet<ShippingAddress> ShippingAddresses { get; set; }
         public DbSet<Image> Images { get; set; }
+        public DbSet<Province> Provinces { get; set; }
+        public DbSet<District> Districts { get; set; }
+        public DbSet<Ward> Wards { get; set; }
 
 
 
@@ -135,6 +138,39 @@ namespace GiaLaiOCOP.Api.Data
                 .HasOne(img => img.UploadedByUser)
                 .WithMany()
                 .HasForeignKey(img => img.UploadedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // 🟩 Cấu hình quan hệ Province - District (1-n)
+            modelBuilder.Entity<Province>()
+                .HasMany(p => p.Districts)
+                .WithOne(d => d.Province)
+                .HasForeignKey(d => d.ProvinceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // 🟩 Cấu hình quan hệ District - Ward (1-n)
+            modelBuilder.Entity<District>()
+                .HasMany(d => d.Wards)
+                .WithOne(w => w.District)
+                .HasForeignKey(w => w.DistrictId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // 🟩 Cấu hình quan hệ User - Province/District/Ward
+            modelBuilder.Entity<User>()
+                .HasOne(u => u.Province)
+                .WithMany()
+                .HasForeignKey(u => u.ProvinceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<User>()
+                .HasOne(u => u.District)
+                .WithMany()
+                .HasForeignKey(u => u.DistrictId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<User>()
+                .HasOne(u => u.Ward)
+                .WithMany()
+                .HasForeignKey(u => u.WardId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

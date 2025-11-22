@@ -15,8 +15,14 @@ namespace GiaLaiOCOP.Api.Models
         public string? PhoneNumber { get; set; }
         public string? Gender { get; set; }
         public DateTime? DateOfBirth { get; set; }
-        public string? ShippingAddress { get; set; }
+        public string? ShippingAddress { get; set; } // Giữ lại để tương thích với code cũ
         public string? AvatarUrl { get; set; }
+
+        // Địa chỉ chi tiết (Tỉnh/Thành phố → Quận/Huyện → Phường/Xã)
+        public int? ProvinceId { get; set; }
+        public int? DistrictId { get; set; }
+        public int? WardId { get; set; }
+        public string? AddressDetail { get; set; } // Địa chỉ cụ thể (số nhà, tên đường, ...)
 
         // Phân quyền
         // "SystemAdmin" → bạn (người sở hữu hệ thống)
@@ -46,5 +52,13 @@ namespace GiaLaiOCOP.Api.Models
         // 🔹 Ảnh đại diện (avatar)
         [JsonIgnore]
         public ICollection<Image> Images { get; set; } = new List<Image>();
+
+        // Quan hệ với địa chỉ
+        [JsonIgnore]
+        public Province? Province { get; set; }
+        [JsonIgnore]
+        public District? District { get; set; }
+        [JsonIgnore]
+        public Ward? Ward { get; set; }
     }
 }

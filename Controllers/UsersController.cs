@@ -7,6 +7,7 @@ using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -60,7 +61,11 @@ namespace GiaLaiOCOP.Api.Controllers
                 ShippingAddress = user.ShippingAddress,
                 AvatarUrl = user.AvatarUrl,
                 CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt
+                UpdatedAt = user.UpdatedAt,
+                ProvinceId = user.ProvinceId,
+                DistrictId = user.DistrictId,
+                WardId = user.WardId,
+                AddressDetail = user.AddressDetail
             };
         }
 
@@ -273,6 +278,68 @@ namespace GiaLaiOCOP.Api.Controllers
                 user.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
+
+            return Ok(MapUserToDto(user));
+        }
+
+        // 🔹 PUT: api/users/update-shipping-address - Cập nhật địa chỉ giao hàng chi tiết
+        [HttpPut("update-shipping-address")]
+        public async Task<ActionResult<UserDto>> UpdateShippingAddress([FromBody] UpdateShippingAddressDetailDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var currentUserId = await GetCurrentUserIdAsync();
+            if (currentUserId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var user = await _context.Users
+                .Include(u => u.Enterprise)
+                .Include(u => u.Province)
+                .Include(u => u.District)
+                .Include(u => u.Ward)
+                .FirstOrDefaultAsync(u => u.Id == currentUserId.Value);
+
+            if (user == null)
+                return NotFound("Không tìm thấy người dùng.");
+
+            // Validate ProvinceId
+            var province = await _context.Provinces.FindAsync(dto.ProvinceId);
+            if (province == null)
+                return BadRequest($"Không tìm thấy tỉnh/thành phố với Id = {dto.ProvinceId}.");
+
+            // Validate DistrictId
+            var district = await _context.Districts
+                .FirstOrDefaultAsync(d => d.Id == dto.DistrictId && d.ProvinceId == dto.ProvinceId);
+            if (district == null)
+                return BadRequest($"Không tìm thấy quận/huyện với Id = {dto.DistrictId} thuộc tỉnh {province.Name}.");
+
+            // Validate WardId
+            var ward = await _context.Wards
+                .FirstOrDefaultAsync(w => w.Id == dto.WardId && w.DistrictId == dto.DistrictId);
+            if (ward == null)
+                return BadRequest($"Không tìm thấy phường/xã với Id = {dto.WardId} thuộc quận/huyện {district.Name}.");
+
+            // Cập nhật địa chỉ
+            user.ProvinceId = dto.ProvinceId;
+            user.DistrictId = dto.DistrictId;
+            user.WardId = dto.WardId;
+            user.AddressDetail = dto.AddressDetail.Trim();
+
+            // Cập nhật ShippingAddress để tương thích với code cũ (tạo địa chỉ đầy đủ)
+            var fullAddress = $"{dto.AddressDetail.Trim()}, {ward.Name}, {district.Name}, {province.Name}";
+            user.ShippingAddress = fullAddress;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            // Reload để lấy dữ liệu mới nhất
+            user = await _context.Users
+                .Include(u => u.Enterprise)
+                .Include(u => u.Province)
+                .Include(u => u.District)
+                .Include(u => u.Ward)
+                .FirstOrDefaultAsync(u => u.Id == currentUserId.Value);
 
             return Ok(MapUserToDto(user));
         }
