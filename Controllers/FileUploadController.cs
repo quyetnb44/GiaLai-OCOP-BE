@@ -1,6 +1,12 @@
+using System;
+using System.Collections.Generic;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.IO;
+using GiaLaiOCOP.Api.Data;
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
+using Microsoft.EntityFrameworkCore;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -11,11 +17,34 @@ namespace GiaLaiOCOP.Api.Controllers
     {
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<FileUploadController> _logger;
+        private readonly AppDbContext _context;
 
-        public FileUploadController(IWebHostEnvironment environment, ILogger<FileUploadController> logger)
+        public FileUploadController(IWebHostEnvironment environment, ILogger<FileUploadController> logger, AppDbContext context)
         {
             _environment = environment;
             _logger = logger;
+            _context = context;
+        }
+
+        private async Task<int?> GetUserIdFromTokenAsync()
+        {
+            var claimValue = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (string.IsNullOrWhiteSpace(claimValue))
+                return null;
+
+            if (int.TryParse(claimValue, out var userId))
+                return userId;
+
+            if (claimValue.Contains("@"))
+            {
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Email == claimValue);
+                return user?.Id;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -151,6 +180,69 @@ namespace GiaLaiOCOP.Api.Controllers
                 totalUploaded = uploadedFiles.Count,
                 totalFailed = errors.Count
             });
+        }
+
+        /// <summary>
+        /// Upload tài liệu xác thực (PDF hoặc ảnh) cho doanh nghiệp
+        /// </summary>
+        [HttpPost("document")]
+        [Authorize(Roles = "EnterpriseAdmin")]
+        [RequestSizeLimit(10 * 1024 * 1024)] // 10MB
+        public async Task<ActionResult<object>> UploadDocument(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("Không có file được tải lên.");
+
+            var allowedExtensions = new[] { ".pdf", ".jpg", ".jpeg", ".png" };
+            var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
+
+            if (!allowedExtensions.Contains(fileExtension))
+                return BadRequest("Chỉ chấp nhận file PDF hoặc ảnh (JPG, JPEG, PNG).");
+
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var user = await _context.Users.FindAsync(userId.Value);
+            if (user?.EnterpriseId == null)
+                return Forbid("Bạn không thuộc doanh nghiệp nào.");
+
+            try
+            {
+                var uploadsFolder = Path.Combine(
+                    _environment.ContentRootPath,
+                    "uploads",
+                    "documents",
+                    "enterprises",
+                    user.EnterpriseId.Value.ToString());
+
+                if (!Directory.Exists(uploadsFolder))
+                    Directory.CreateDirectory(uploadsFolder);
+
+                var fileName = $"{Guid.NewGuid()}{fileExtension}";
+                var filePath = Path.Combine(uploadsFolder, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
+                var documentUrl = $"{baseUrl}/uploads/documents/enterprises/{user.EnterpriseId}/{fileName}";
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Upload tài liệu thành công.",
+                    documentUrl,
+                    fileName
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi upload tài liệu.");
+                return StatusCode(500, "Đã xảy ra lỗi khi upload tài liệu.");
+            }
         }
     }
 }

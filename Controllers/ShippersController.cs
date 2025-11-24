@@ -43,6 +43,28 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         /// <summary>
+        /// Lấy danh sách tất cả shippers (EnterpriseAdmin/SystemAdmin)
+        /// </summary>
+        [HttpGet]
+        [Authorize(Roles = "SystemAdmin,EnterpriseAdmin")]
+        public async Task<ActionResult<IEnumerable<ShipperDto>>> GetShippers()
+        {
+            var shippers = await _context.Users
+                .Where(u => u.Role == "Shipper")
+                .Select(u => new ShipperDto
+                {
+                    Id = u.Id,
+                    Name = u.Name,
+                    Email = u.Email,
+                    PhoneNumber = u.PhoneNumber
+                })
+                .OrderBy(u => u.Name)
+                .ToListAsync();
+
+            return Ok(shippers);
+        }
+
+        /// <summary>
         /// Lấy danh sách đơn hàng cần giao (Shipper chỉ thấy đơn của mình, EnterpriseAdmin/SystemAdmin thấy tất cả)
         /// </summary>
         [HttpGet("orders")]

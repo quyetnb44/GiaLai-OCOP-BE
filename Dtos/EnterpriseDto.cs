@@ -26,4 +26,6 @@ public class EnterpriseDto
     public string BusinessField { get; set; } = "";
     public string? ImageUrl { get; set; }
     public double? AverageRating { get; set; }
+    public string? ApprovalStatus { get; set; }
+    public string? RejectionReason { get; set; }
 }

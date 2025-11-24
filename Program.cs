@@ -12,6 +12,8 @@ using Microsoft.AspNetCore.Authorization;
 using GiaLaiOCOP.Api.Dtos;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using Microsoft.Extensions.FileProviders;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -140,8 +142,33 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
 app.UseCors("AllowAll");
 
-// 🔹 Serve static files (uploads/images)
+// 🔹 Serve static files (uploads/images + avatars)
 app.UseStaticFiles();
+
+var avatarsRoot = Path.Combine(builder.Environment.ContentRootPath, "uploads", "images", "avatars");
+if (!Directory.Exists(avatarsRoot))
+{
+    Directory.CreateDirectory(avatarsRoot);
+}
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(builder.Environment.ContentRootPath, "uploads", "images")),
+    RequestPath = "/uploads/images"
+});
+
+var documentsRoot = Path.Combine(builder.Environment.ContentRootPath, "uploads", "documents");
+if (!Directory.Exists(documentsRoot))
+{
+    Directory.CreateDirectory(documentsRoot);
+}
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(documentsRoot),
+    RequestPath = "/uploads/documents"
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

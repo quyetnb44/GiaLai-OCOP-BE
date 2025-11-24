@@ -25,6 +25,8 @@ namespace GiaLaiOCOP.Api.Models
         public int? OCOPRating { get; set; }                           // Xếp hạng OCOP (3-5 sao)
         public string BusinessField { get; set; } = string.Empty;      // Ngành hàng (Thực phẩm, đồ uống, thảo dược...)
         public string? ImageUrl { get; set; }                          // Ảnh đại diện doanh nghiệp
+        public string ApprovalStatus { get; set; } = "Pending";        // Pending, Approved, Rejected
+        public string? RejectionReason { get; set; }
         
         // 🔹 Điểm đánh giá trung bình (tính từ Reviews của các sản phẩm)
         public double? AverageRating { get; set; }                     // Điểm đánh giá trung bình (1-5)
@@ -46,6 +48,15 @@ namespace GiaLaiOCOP.Api.Models
         // 1 doanh nghiệp có nhiều ảnh
         [JsonIgnore]
         public ICollection<Image>? Images { get; set; }
+
+        [JsonIgnore]
+        public EnterpriseSettings? Settings { get; set; }
+
+        [JsonIgnore]
+        public ICollection<InventoryHistory>? InventoryHistories { get; set; }
+
+        [JsonIgnore]
+        public ICollection<Notification>? Notifications { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }

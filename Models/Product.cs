@@ -13,6 +13,7 @@ namespace GiaLaiOCOP.Api.Models
         public string? ImageUrl { get; set; }                          // Ảnh sản phẩm
         public int? OCOPRating { get; set; }                           // Xếp hạng OCOP (3-5 sao)
         public string StockStatus { get; set; } = "InStock";           // Tình trạng: "InStock" (còn hàng) / "OutOfStock" (hết hàng)
+        public int StockQuantity { get; set; } = 0;                    // Số lượng tồn kho
         public string Status { get; set; } = "PendingApproval";        // PendingApproval, Approved, Rejected
         public int? ApprovedByUserId { get; set; }
         public DateTime? ApprovedAt { get; set; }
@@ -34,6 +35,12 @@ namespace GiaLaiOCOP.Api.Models
         // 🔹 Danh sách ảnh sản phẩm
         [JsonIgnore]
         public ICollection<Image> Images { get; set; } = new List<Image>();
+
+        [JsonIgnore]
+        public ICollection<InventoryHistory> InventoryHistories { get; set; } = new List<InventoryHistory>();
+
+        [JsonIgnore]
+        public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }

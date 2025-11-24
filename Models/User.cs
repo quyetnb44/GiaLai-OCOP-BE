@@ -53,6 +53,9 @@ namespace GiaLaiOCOP.Api.Models
         [JsonIgnore]
         public ICollection<Image> Images { get; set; } = new List<Image>();
 
+        [JsonIgnore]
+        public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
+
         // Quan hệ với địa chỉ
         [JsonIgnore]
         public Province? Province { get; set; }

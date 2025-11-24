@@ -6,6 +6,7 @@ using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using System.Text.Json;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -63,6 +64,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 BusinessField = enterprise.BusinessField,
                 ImageUrl = enterprise.ImageUrl,
                 AverageRating = enterprise.AverageRating,
+                ApprovalStatus = enterprise.ApprovalStatus,
+                RejectionReason = enterprise.RejectionReason,
                 Products = (enterprise.Products ?? new List<Product>()).Select(p => new ProductDto
                 {
                     Id = p.Id,
@@ -73,6 +76,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     ImageUrl = p.ImageUrl,
                     OCOPRating = p.OCOPRating,
                     StockStatus = p.StockStatus,
+                StockQuantity = p.StockQuantity,
                     AverageRating = p.AverageRating,
                     Status = p.Status,
                     CategoryId = p.CategoryId,
@@ -96,6 +100,50 @@ namespace GiaLaiOCOP.Api.Controllers
                     CreatedAt = u.CreatedAt,
                     UpdatedAt = u.UpdatedAt
                 }).ToList()
+            };
+        }
+
+        private EnterpriseSettingsDto MapSettingsToDto(EnterpriseSettings settings)
+        {
+            var shippingMethods = ParseShippingMethods(settings.ShippingMethodsJson);
+
+            return new EnterpriseSettingsDto
+            {
+                EnterpriseId = settings.EnterpriseId,
+                ShippingMethods = shippingMethods,
+                ContactEmail = settings.ContactEmail,
+                ContactPhone = settings.ContactPhone,
+                ContactAddress = settings.ContactAddress,
+                BusinessHours = settings.BusinessHours,
+                ReturnPolicy = settings.ReturnPolicy,
+                ShippingPolicy = settings.ShippingPolicy,
+                UpdatedAt = settings.UpdatedAt ?? settings.CreatedAt
+            };
+        }
+
+        private List<ShippingMethodDto> ParseShippingMethods(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return GetDefaultShippingMethods();
+
+            try
+            {
+                var methods = JsonSerializer.Deserialize<List<ShippingMethodDto>>(json);
+                return methods ?? GetDefaultShippingMethods();
+            }
+            catch
+            {
+                return GetDefaultShippingMethods();
+            }
+        }
+
+        private List<ShippingMethodDto> GetDefaultShippingMethods()
+        {
+            return new List<ShippingMethodDto>
+            {
+                new ShippingMethodDto { Id = "cod", Name = "COD", Enabled = true, Fee = 0 },
+                new ShippingMethodDto { Id = "standard", Name = "Giao hàng tiêu chuẩn", Enabled = true, Fee = 30000 },
+                new ShippingMethodDto { Id = "express", Name = "Giao hàng nhanh", Enabled = false, Fee = 50000 }
             };
         }
 
@@ -123,6 +171,101 @@ namespace GiaLaiOCOP.Api.Controllers
                 return NotFound("Bạn không thuộc doanh nghiệp nào.");
 
             return Ok(MapEnterpriseToDto(user.Enterprise));
+        }
+
+        /// <summary>
+        /// Lấy cài đặt doanh nghiệp hiện tại
+        /// </summary>
+        [HttpGet("me/settings")]
+        [Authorize(Roles = "EnterpriseAdmin")]
+        public async Task<ActionResult<EnterpriseSettingsDto>> GetMyEnterpriseSettings()
+        {
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var user = await _context.Users
+                .Include(u => u.Enterprise)
+                .FirstOrDefaultAsync(u => u.Id == userId.Value);
+
+            if (user?.EnterpriseId == null || user.Enterprise == null)
+                return NotFound("Bạn không thuộc doanh nghiệp nào.");
+
+            var settings = await _context.EnterpriseSettings
+                .FirstOrDefaultAsync(s => s.EnterpriseId == user.EnterpriseId.Value);
+
+            if (settings == null)
+            {
+                return Ok(new EnterpriseSettingsDto
+                {
+                    EnterpriseId = user.EnterpriseId.Value,
+                    ShippingMethods = GetDefaultShippingMethods(),
+                    ContactEmail = user.Enterprise.EmailContact,
+                    ContactPhone = user.Enterprise.PhoneNumber,
+                    ContactAddress = user.Enterprise.Address,
+                    BusinessHours = "08:00 - 17:00",
+                    ReturnPolicy = string.Empty,
+                    ShippingPolicy = string.Empty,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+
+            return Ok(MapSettingsToDto(settings));
+        }
+
+        /// <summary>
+        /// Cập nhật cài đặt doanh nghiệp
+        /// </summary>
+        [HttpPut("me/settings")]
+        [Authorize(Roles = "EnterpriseAdmin")]
+        public async Task<ActionResult<EnterpriseSettingsDto>> UpdateMyEnterpriseSettings([FromBody] EnterpriseSettingsDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var user = await _context.Users
+                .Include(u => u.Enterprise)
+                .FirstOrDefaultAsync(u => u.Id == userId.Value);
+
+            if (user?.EnterpriseId == null || user.Enterprise == null)
+                return NotFound("Bạn không thuộc doanh nghiệp nào.");
+
+            var settings = await _context.EnterpriseSettings
+                .FirstOrDefaultAsync(s => s.EnterpriseId == user.EnterpriseId.Value);
+
+            if (settings == null)
+            {
+                settings = new EnterpriseSettings
+                {
+                    EnterpriseId = user.EnterpriseId.Value,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.EnterpriseSettings.Add(settings);
+            }
+
+            settings.ContactEmail = string.IsNullOrWhiteSpace(dto.ContactEmail)
+                ? user.Enterprise.EmailContact
+                : dto.ContactEmail;
+            settings.ContactPhone = string.IsNullOrWhiteSpace(dto.ContactPhone)
+                ? user.Enterprise.PhoneNumber
+                : dto.ContactPhone;
+            settings.ContactAddress = string.IsNullOrWhiteSpace(dto.ContactAddress)
+                ? user.Enterprise.Address
+                : dto.ContactAddress;
+            settings.BusinessHours = string.IsNullOrWhiteSpace(dto.BusinessHours) ? "08:00 - 17:00" : dto.BusinessHours;
+            settings.ReturnPolicy = dto.ReturnPolicy;
+            settings.ShippingPolicy = dto.ShippingPolicy;
+            settings.ShippingMethodsJson = JsonSerializer.Serialize(dto.ShippingMethods?.Any() == true
+                ? dto.ShippingMethods
+                : GetDefaultShippingMethods());
+            settings.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            return Ok(MapSettingsToDto(settings));
         }
 
         // 🔹 PUT: api/enterprises/me - EnterpriseAdmin cập nhật thông tin doanh nghiệp của mình

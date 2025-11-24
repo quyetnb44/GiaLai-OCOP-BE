@@ -65,3 +65,4 @@ CREATE INDEX IF NOT EXISTS "IX_Users_ProvinceId" ON "Users" ("ProvinceId");
 CREATE INDEX IF NOT EXISTS "IX_Users_DistrictId" ON "Users" ("DistrictId");
 CREATE INDEX IF NOT EXISTS "IX_Users_WardId" ON "Users" ("WardId");
 
+

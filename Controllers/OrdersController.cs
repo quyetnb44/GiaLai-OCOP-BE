@@ -44,7 +44,12 @@ namespace GiaLaiOCOP.Api.Controllers
 
         // GET /api/orders
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrders()
+        public async Task<ActionResult<object>> GetOrders(
+            [FromQuery] string? status,
+            [FromQuery] DateTime? startDate,
+            [FromQuery] DateTime? endDate,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
         {
             var userId = await GetUserIdFromTokenAsync();
             if (userId == null)
@@ -82,10 +87,22 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Forbid();
             }
 
-            var orders = await query
+            var filteredQuery = ApplyOrderFilters(query, status, startDate, endDate);
+
+            page = page < 1 ? 1 : page;
+            pageSize = pageSize < 1 ? 20 : pageSize;
+            pageSize = pageSize > 100 ? 100 : pageSize;
+
+            var totalItems = await filteredQuery.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
+
+            var orders = await filteredQuery
                 .Include(o => o.ShippingAddressDetail) // 🔹 Load ShippingAddressDetail từ database
                 .Include(o => o.Payments)
                     .ThenInclude(p => p.Enterprise)
+                .OrderByDescending(o => o.OrderDate)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
             
             // Map sang DTOs
@@ -133,7 +150,14 @@ namespace GiaLaiOCOP.Api.Controllers
                 };
             });
 
-            return Ok(orderDtos);
+            return Ok(new
+            {
+                items = orderDtos,
+                page,
+                pageSize,
+                totalItems,
+                totalPages
+            });
         }
 
         // 🔹 GET /api/orders/{id} - Xem chi tiết 1 đơn hàng
@@ -358,6 +382,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 Payments = order.Payments.Select(MapPaymentToDto).ToList()
             };
 
+            await CreateOrderNotificationsAsync(order.Id);
+
             return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, orderDto);
         }
 
@@ -507,6 +533,68 @@ namespace GiaLaiOCOP.Api.Controllers
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+
+        private IQueryable<Order> ApplyOrderFilters(IQueryable<Order> query, string? status, DateTime? startDate, DateTime? endDate)
+        {
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                var statuses = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (statuses.Count > 0)
+                {
+                    var normalizedStatuses = statuses
+                        .Select(s => s.ToUpperInvariant())
+                        .ToList();
+
+                    query = query.Where(o => normalizedStatuses.Contains(o.Status.ToUpper()));
+                }
+            }
+
+            if (startDate.HasValue)
+            {
+                var from = DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc);
+                query = query.Where(o => o.OrderDate >= from);
+            }
+
+            if (endDate.HasValue)
+            {
+                var to = DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc);
+                query = query.Where(o => o.OrderDate <= to);
+            }
+
+            return query;
+        }
+
+        private async Task CreateOrderNotificationsAsync(int orderId)
+        {
+            var enterpriseIds = await _context.OrderItems
+                .Where(oi => oi.OrderId == orderId && oi.Product != null)
+                .Select(oi => oi.Product!.EnterpriseId)
+                .Distinct()
+                .ToListAsync();
+
+            if (!enterpriseIds.Any())
+                return;
+
+            foreach (var enterpriseId in enterpriseIds)
+            {
+                _context.Notifications.Add(new Notification
+                {
+                    Type = "new_order",
+                    Title = $"Đơn hàng mới #{orderId}",
+                    Message = "Bạn có đơn hàng mới cần xử lý.",
+                    EnterpriseId = enterpriseId,
+                    OrderId = orderId,
+                    Link = $"/orders/{orderId}"
+                });
+            }
+
+            await _context.SaveChangesAsync();
         }
 
         private static PaymentDto MapPaymentToDto(Payment payment)

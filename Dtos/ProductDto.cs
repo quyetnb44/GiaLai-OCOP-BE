@@ -12,6 +12,7 @@ public class ProductDto
     public string? ImageUrl { get; set; }
     public int? OCOPRating { get; set; }
     public string StockStatus { get; set; } = "InStock";
+    public int StockQuantity { get; set; }
     public double? AverageRating { get; set; }
     public string Status { get; set; } = "PendingApproval";
     public int? CategoryId { get; set; }

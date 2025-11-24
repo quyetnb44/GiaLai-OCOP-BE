@@ -159,6 +159,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 ImageUrl = dto.ImageUrl,
                 OCOPRating = dto.OCOPRating,
                 StockStatus = dto.StockStatus ?? "InStock",
+                StockQuantity = dto.StockQuantity ?? 0,
                 CategoryId = dto.CategoryId,
                 Status = "PendingApproval",
                 ApprovedAt = null,
@@ -212,6 +213,8 @@ namespace GiaLaiOCOP.Api.Controllers
             product.ImageUrl = dto.ImageUrl;
             product.OCOPRating = dto.OCOPRating;
             product.StockStatus = dto.StockStatus ?? product.StockStatus;
+            if (dto.StockQuantity.HasValue)
+                product.StockQuantity = dto.StockQuantity.Value;
             product.CategoryId = dto.CategoryId;
             product.UpdatedAt = DateTime.UtcNow;
             product.Status = "PendingApproval";
@@ -294,7 +297,39 @@ namespace GiaLaiOCOP.Api.Controllers
 
             product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+
+            if (product.Status == "Approved" || product.Status == "Rejected")
+            {
+                await CreateProductStatusNotificationAsync(product);
+            }
             return NoContent();
+        }
+
+        private async Task CreateProductStatusNotificationAsync(Product product)
+        {
+            var notification = new Notification
+            {
+                EnterpriseId = product.EnterpriseId,
+                ProductId = product.Id,
+                Link = $"/products/{product.Id}",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            if (product.Status == "Approved")
+            {
+                notification.Type = "product_approved";
+                notification.Title = $"Sản phẩm '{product.Name}' đã được duyệt";
+                notification.Message = "Sản phẩm của bạn đã được SystemAdmin phê duyệt.";
+            }
+            else
+            {
+                notification.Type = "product_rejected";
+                notification.Title = $"Sản phẩm '{product.Name}' bị từ chối";
+                notification.Message = "Vui lòng kiểm tra lại thông tin và gửi duyệt lại.";
+            }
+
+            _context.Notifications.Add(notification);
+            await _context.SaveChangesAsync();
         }
 
         private static ProductDto MapProductToDto(Product product)
@@ -312,6 +347,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 StockStatus = product.StockStatus,
                 AverageRating = product.AverageRating, // 🔹 Lấy từ database
                 Status = product.Status,
+                StockQuantity = product.StockQuantity,
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category?.Name,
                 ApprovedAt = product.ApprovedAt,
@@ -337,5 +373,7 @@ namespace GiaLaiOCOP.Api.Controllers
         public int? OCOPRating { get; set; }
         public string? StockStatus { get; set; } // "InStock" or "OutOfStock"
         public int? CategoryId { get; set; }
+        [Range(0, int.MaxValue, ErrorMessage = "Số lượng tồn kho phải lớn hơn hoặc bằng 0.")]
+        public int? StockQuantity { get; set; }
     }
 }

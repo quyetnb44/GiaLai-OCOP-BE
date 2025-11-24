@@ -27,6 +27,9 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<Province> Provinces { get; set; }
         public DbSet<District> Districts { get; set; }
         public DbSet<Ward> Wards { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
+        public DbSet<InventoryHistory> InventoryHistories { get; set; }
+        public DbSet<EnterpriseSettings> EnterpriseSettings { get; set; }
 
 
 
@@ -172,6 +175,54 @@ namespace GiaLaiOCOP.Api.Data
                 .WithMany()
                 .HasForeignKey(u => u.WardId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EnterpriseSettings>()
+                .HasOne(es => es.Enterprise)
+                .WithOne(e => e.Settings)
+                .HasForeignKey<EnterpriseSettings>(es => es.EnterpriseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<InventoryHistory>()
+                .HasOne(ih => ih.Product)
+                .WithMany(p => p.InventoryHistories)
+                .HasForeignKey(ih => ih.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<InventoryHistory>()
+                .HasOne(ih => ih.Enterprise)
+                .WithMany(e => e.InventoryHistories!)
+                .HasForeignKey(ih => ih.EnterpriseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<InventoryHistory>()
+                .HasOne(ih => ih.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(ih => ih.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.Enterprise)
+                .WithMany(e => e.Notifications!)
+                .HasForeignKey(n => n.EnterpriseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.User)
+                .WithMany(u => u.Notifications)
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.Product)
+                .WithMany(p => p.Notifications)
+                .HasForeignKey(n => n.ProductId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.Order)
+                .WithMany()
+                .HasForeignKey(n => n.OrderId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }
