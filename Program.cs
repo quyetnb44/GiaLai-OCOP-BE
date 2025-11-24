@@ -120,8 +120,12 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// 🔹 Configure BankTransfer settings
+// 🔹 Configure app settings
 builder.Services.Configure<BankTransferSettings>(builder.Configuration.GetSection("BankTransfer"));
+builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("Cloudinary"));
+
+// 🔹 Cloudinary service
+builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 
 // 🔹 Add Health Checks
 builder.Services.AddHealthChecks()

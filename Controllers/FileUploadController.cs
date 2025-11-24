@@ -7,6 +7,7 @@ using GiaLaiOCOP.Api.Data;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.EntityFrameworkCore;
+using GiaLaiOCOP.Api.Services;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -18,12 +19,18 @@ namespace GiaLaiOCOP.Api.Controllers
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<FileUploadController> _logger;
         private readonly AppDbContext _context;
+        private readonly ICloudinaryService _cloudinaryService;
 
-        public FileUploadController(IWebHostEnvironment environment, ILogger<FileUploadController> logger, AppDbContext context)
+        public FileUploadController(
+            IWebHostEnvironment environment,
+            ILogger<FileUploadController> logger,
+            AppDbContext context,
+            ICloudinaryService cloudinaryService)
         {
             _environment = environment;
             _logger = logger;
             _context = context;
+            _cloudinaryService = cloudinaryService;
         }
 
         private async Task<int?> GetUserIdFromTokenAsync()
@@ -52,7 +59,7 @@ namespace GiaLaiOCOP.Api.Controllers
         /// </summary>
         [HttpPost("image")]
         [RequestSizeLimit(10 * 1024 * 1024)] // 10MB
-        public async Task<ActionResult<object>> UploadImage(IFormFile file)
+        public async Task<ActionResult<object>> UploadImage(IFormFile file, [FromQuery] string? folder = null)
         {
             if (file == null || file.Length == 0)
                 return BadRequest("Không có file được tải lên.");
@@ -70,37 +77,23 @@ namespace GiaLaiOCOP.Api.Controllers
 
             try
             {
-                // Tạo thư mục uploads/images nếu chưa có
-                var uploadsFolder = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "uploads", "images");
-                if (!Directory.Exists(uploadsFolder))
-                    Directory.CreateDirectory(uploadsFolder);
-
-                // Tạo tên file unique
-                var fileName = $"{Guid.NewGuid()}{fileExtension}";
-                var filePath = Path.Combine(uploadsFolder, fileName);
-
-                // Lưu file
-                using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await file.CopyToAsync(stream);
-                }
-
-                // Trả về URL để frontend sử dụng
-                var baseUrl = $"{Request.Scheme}://{Request.Host}";
-                var imageUrl = $"{baseUrl}/uploads/images/{fileName}";
+                var uploadResult = await _cloudinaryService.UploadImageAsync(file, folder);
 
                 return Ok(new
                 {
                     success = true,
                     message = "Upload hình ảnh thành công.",
-                    imageUrl = imageUrl,
-                    fileName = fileName
+                    imageUrl = uploadResult.Url,
+                    publicId = uploadResult.PublicId,
+                    width = uploadResult.Width,
+                    height = uploadResult.Height,
+                    format = uploadResult.Format
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi upload hình ảnh.");
-                return StatusCode(500, "Đã xảy ra lỗi khi upload hình ảnh.");
+                _logger.LogError(ex, "Lỗi khi upload hình ảnh lên Cloudinary.");
+                return StatusCode(500, ex.Message);
             }
         }
 
@@ -109,7 +102,7 @@ namespace GiaLaiOCOP.Api.Controllers
         /// </summary>
         [HttpPost("images")]
         [RequestSizeLimit(50 * 1024 * 1024)] // 50MB tổng
-        public async Task<ActionResult<object>> UploadMultipleImages(List<IFormFile> files)
+        public async Task<ActionResult<object>> UploadMultipleImages(List<IFormFile> files, [FromQuery] string? folder = null)
         {
             if (files == null || files.Count == 0)
                 return BadRequest("Không có file nào được tải lên.");
@@ -120,12 +113,6 @@ namespace GiaLaiOCOP.Api.Controllers
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
             var uploadedFiles = new List<object>();
             var errors = new List<string>();
-
-            var uploadsFolder = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "uploads", "images");
-            if (!Directory.Exists(uploadsFolder))
-                Directory.CreateDirectory(uploadsFolder);
-
-            var baseUrl = $"{Request.Scheme}://{Request.Host}";
 
             foreach (var file in files)
             {
@@ -150,25 +137,22 @@ namespace GiaLaiOCOP.Api.Controllers
 
                 try
                 {
-                    var fileName = $"{Guid.NewGuid()}{fileExtension}";
-                    var filePath = Path.Combine(uploadsFolder, fileName);
-
-                    using (var stream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await file.CopyToAsync(stream);
-                    }
-
+                    var result = await _cloudinaryService.UploadImageAsync(file, folder);
                     uploadedFiles.Add(new
                     {
                         fileName = file.FileName,
-                        imageUrl = $"{baseUrl}/uploads/images/{fileName}",
-                        size = file.Length
+                        imageUrl = result.Url,
+                        publicId = result.PublicId,
+                        size = file.Length,
+                        width = result.Width,
+                        height = result.Height,
+                        format = result.Format
                     });
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Lỗi khi upload file {FileName}", file.FileName);
-                    errors.Add($"Lỗi khi upload {file.FileName}.");
+                    _logger.LogError(ex, "Lỗi khi upload file {FileName} lên Cloudinary", file.FileName);
+                    errors.Add($"Lỗi khi upload {file.FileName}: {ex.Message}");
                 }
             }
 
