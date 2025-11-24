@@ -54,6 +54,41 @@ namespace GiaLaiOCOP.Api.Controllers
             return null;
         }
 
+        private string? GetUserRoleFromToken()
+        {
+            return User.FindFirst(ClaimTypes.Role)?.Value;
+        }
+
+        private bool IsAllowedToUploadToFolder(string? role, string? folder)
+        {
+            if (string.IsNullOrWhiteSpace(role))
+                return false;
+
+            var normalizedRole = role.Trim().ToLowerInvariant();
+            var normalizedFolder = (folder ?? string.Empty).Trim().ToLowerInvariant();
+
+            if (normalizedRole == "systemadmin" || normalizedRole == "sysadmin")
+                return true;
+
+            if (normalizedRole == "enterpriseadmin")
+            {
+                return normalizedFolder.Contains("products") ||
+                       normalizedFolder.Contains("users") ||
+                       normalizedFolder.Contains("enterprises") ||
+                       normalizedFolder.Contains("gialaiocop/images") ||
+                       string.IsNullOrWhiteSpace(normalizedFolder);
+            }
+
+            if (normalizedRole == "customer" || normalizedRole == "user")
+            {
+                return normalizedFolder.Contains("users") ||
+                       normalizedFolder.Contains("gialaiocop/images") ||
+                       string.IsNullOrWhiteSpace(normalizedFolder);
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Upload hình ảnh (sản phẩm, doanh nghiệp, user avatar)
         /// </summary>
@@ -74,6 +109,13 @@ namespace GiaLaiOCOP.Api.Controllers
             // Kiểm tra kích thước (tối đa 10MB)
             if (file.Length > 10 * 1024 * 1024)
                 return BadRequest("Kích thước file không được vượt quá 10MB.");
+
+            var userRole = GetUserRoleFromToken();
+            if (!IsAllowedToUploadToFolder(userRole, folder))
+            {
+                _logger.LogWarning("User role {Role} không có quyền upload vào folder {Folder}", userRole, folder);
+                return Forbid("Bạn không có quyền upload ảnh vào folder này. Vui lòng liên hệ quản trị viên để được cấp quyền.");
+            }
 
             try
             {
@@ -109,6 +151,13 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (files.Count > 10)
                 return BadRequest("Chỉ có thể upload tối đa 10 hình ảnh cùng lúc.");
+
+            var userRole = GetUserRoleFromToken();
+            if (!IsAllowedToUploadToFolder(userRole, folder))
+            {
+                _logger.LogWarning("User role {Role} không có quyền upload vào folder {Folder}", userRole, folder);
+                return Forbid("Bạn không có quyền upload ảnh vào folder này. Vui lòng liên hệ quản trị viên để được cấp quyền.");
+            }
 
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
             var uploadedFiles = new List<object>();
