@@ -1,0 +1,35 @@
+// Thêm vào ProductsController.cs sau endpoint UpdateProductStatus
+
+        /// <summary>
+        /// SystemAdmin: Cập nhật chỉ ảnh sản phẩm (không cần gửi toàn bộ product data)
+        /// </summary>
+        [Authorize(Roles = "SystemAdmin")]
+        [HttpPut("{id}/image")]
+        public async Task<IActionResult> UpdateProductImage(int id, [FromBody] UpdateProductImageDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+                return NotFound("Không tìm thấy sản phẩm.");
+
+            if (!string.IsNullOrWhiteSpace(dto.ImageUrl))
+            {
+                product.ImageUrl = dto.ImageUrl.Trim();
+                product.UpdatedAt = DateTime.UtcNow;
+                // SystemAdmin update image không reset status
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
+
+            return BadRequest("ImageUrl không hợp lệ.");
+        }
+
+// Thêm class này ở cuối file ProductsController.cs (trước dòng cuối cùng)
+
+    public class UpdateProductImageDto
+    {
+        public string ImageUrl { get; set; } = "";
+    }
+

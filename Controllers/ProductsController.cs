@@ -177,50 +177,80 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 PUT: api/products/{id}
-        [Authorize(Roles = "EnterpriseAdmin")]
+        [Authorize(Roles = "EnterpriseAdmin,SystemAdmin")]
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] CreateProductDto dto)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
             var product = await _context.Products.FindAsync(id);
             if (product == null) return NotFound();
 
-            var currentUserId = await GetUserIdFromTokenAsync();
-            if (currentUserId == null)
-                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            var isSystemAdmin = role?.ToLower() == "systemadmin";
 
-            var enterpriseId = await _context.Users
-                .Where(u => u.Id == currentUserId.Value)
-                .Select(u => u.EnterpriseId)
-                .FirstOrDefaultAsync();
-
-            if (product.EnterpriseId != enterpriseId)
-                return Forbid();
-
-            if (dto.CategoryId.HasValue)
+            // SystemAdmin: Có thể update bất kỳ product nào
+            // EnterpriseAdmin: Chỉ update product của chính enterprise mình
+            if (!isSystemAdmin)
             {
-                var category = await _context.Categories
-                    .FirstOrDefaultAsync(c => c.Id == dto.CategoryId.Value && c.IsActive);
-                if (category == null)
-                    return BadRequest("Danh mục không tồn tại hoặc đã bị vô hiệu hóa.");
+                // EnterpriseAdmin: Validate full DTO
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var currentUserId = await GetUserIdFromTokenAsync();
+                if (currentUserId == null)
+                    return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+                var enterpriseId = await _context.Users
+                    .Where(u => u.Id == currentUserId.Value)
+                    .Select(u => u.EnterpriseId)
+                    .FirstOrDefaultAsync();
+
+                if (product.EnterpriseId != enterpriseId)
+                    return Forbid();
+
+                // EnterpriseAdmin: Update toàn bộ fields
+                product.Name = dto.Name;
+                product.Description = dto.Description;
+                product.Price = dto.Price;
+                product.ImageUrl = dto.ImageUrl;
+                product.OCOPRating = dto.OCOPRating;
+                product.StockStatus = dto.StockStatus ?? product.StockStatus;
+                if (dto.StockQuantity.HasValue)
+                    product.StockQuantity = dto.StockQuantity.Value;
+                product.CategoryId = dto.CategoryId;
+                product.Status = "PendingApproval";
+                product.ApprovedAt = null;
+                product.ApprovedByUserId = null;
+            }
+            else
+            {
+                // SystemAdmin: Cho phép partial update (chỉ update các field có giá trị)
+                // Không validate Required attributes
+                if (!string.IsNullOrWhiteSpace(dto.Name))
+                    product.Name = dto.Name;
+                if (!string.IsNullOrWhiteSpace(dto.Description))
+                    product.Description = dto.Description;
+                if (dto.Price > 0)
+                    product.Price = dto.Price;
+                if (!string.IsNullOrWhiteSpace(dto.ImageUrl))
+                    product.ImageUrl = dto.ImageUrl;
+                if (dto.OCOPRating.HasValue)
+                    product.OCOPRating = dto.OCOPRating;
+                if (!string.IsNullOrWhiteSpace(dto.StockStatus))
+                    product.StockStatus = dto.StockStatus;
+                if (dto.StockQuantity.HasValue)
+                    product.StockQuantity = dto.StockQuantity.Value;
+                if (dto.CategoryId.HasValue)
+                {
+                    var category = await _context.Categories
+                        .FirstOrDefaultAsync(c => c.Id == dto.CategoryId.Value && c.IsActive);
+                    if (category == null)
+                        return BadRequest("Danh mục không tồn tại hoặc đã bị vô hiệu hóa.");
+                    product.CategoryId = dto.CategoryId;
+                }
+                // SystemAdmin update không reset status
             }
 
-            product.Name = dto.Name;
-            product.Description = dto.Description;
-            product.Price = dto.Price;
-            product.ImageUrl = dto.ImageUrl;
-            product.OCOPRating = dto.OCOPRating;
-            product.StockStatus = dto.StockStatus ?? product.StockStatus;
-            if (dto.StockQuantity.HasValue)
-                product.StockQuantity = dto.StockQuantity.Value;
-            product.CategoryId = dto.CategoryId;
             product.UpdatedAt = DateTime.UtcNow;
-            product.Status = "PendingApproval";
-            product.ApprovedAt = null;
-            product.ApprovedByUserId = null;
-
             await _context.SaveChangesAsync();
             return NoContent();
         }
@@ -305,6 +335,32 @@ namespace GiaLaiOCOP.Api.Controllers
             return NoContent();
         }
 
+        /// <summary>
+        /// SystemAdmin: Cập nhật chỉ ảnh sản phẩm (không cần gửi toàn bộ product data)
+        /// </summary>
+        [Authorize(Roles = "SystemAdmin")]
+        [HttpPut("{id}/image")]
+        public async Task<IActionResult> UpdateProductImage(int id, [FromBody] UpdateProductImageDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+                return NotFound("Không tìm thấy sản phẩm.");
+
+            if (!string.IsNullOrWhiteSpace(dto.ImageUrl))
+            {
+                product.ImageUrl = dto.ImageUrl.Trim();
+                product.UpdatedAt = DateTime.UtcNow;
+                // SystemAdmin update image không reset status
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
+
+            return BadRequest("ImageUrl không hợp lệ.");
+        }
+
         private async Task CreateProductStatusNotificationAsync(Product product)
         {
             var notification = new Notification
@@ -375,5 +431,11 @@ namespace GiaLaiOCOP.Api.Controllers
         public int? CategoryId { get; set; }
         [Range(0, int.MaxValue, ErrorMessage = "Số lượng tồn kho phải lớn hơn hoặc bằng 0.")]
         public int? StockQuantity { get; set; }
+    }
+
+    public class UpdateProductImageDto
+    {
+        [Required(ErrorMessage = "ImageUrl là bắt buộc.")]
+        public string ImageUrl { get; set; } = "";
     }
 }
