@@ -9,7 +9,8 @@ using Microsoft.EntityFrameworkCore;
 using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
-using GiaLaiOCOP.Api.Services; 
+using GiaLaiOCOP.Api.Services;
+using Microsoft.AspNetCore.Identity; 
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -21,6 +22,7 @@ namespace GiaLaiOCOP.Api.Controllers
         private readonly IConfiguration _config;
         private readonly IEmailService _emailService;
         private readonly ILogger<AuthController> _logger;
+        private readonly PasswordHasher<User> _passwordHasher = new();
 
         public AuthController(AppDbContext context, IConfiguration config, IEmailService emailService, ILogger<AuthController> logger)
         {
@@ -77,6 +79,27 @@ namespace GiaLaiOCOP.Api.Controllers
                 throw new InvalidOperationException("JWT key is not configured.");
             }
             return key;
+        }
+
+        private bool VerifyPassword(User user, string providedPassword)
+        {
+            try
+            {
+                var result = _passwordHasher.VerifyHashedPassword(user, user.Password, providedPassword);
+                if (result == PasswordVerificationResult.Success || result == PasswordVerificationResult.SuccessRehashNeeded)
+                {
+                    return true;
+                }
+            }
+            catch (FormatException)
+            {
+                // Legacy bcrypt hash format, fall back below
+            }
+            catch (ArgumentException)
+            {
+            }
+
+            return BCrypt.Net.BCrypt.Verify(providedPassword, user.Password);
         }
 
         // 🔹 POST /api/auth/register - ĐĂNG KÝ (Không cần OTP)
@@ -148,7 +171,7 @@ namespace GiaLaiOCOP.Api.Controllers
             if (user == null) return Unauthorized("Email hoặc mật khẩu không đúng.");
 
             // 🔹 Kiểm tra password
-            if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.Password))
+            if (!VerifyPassword(user, dto.Password))
                 return Unauthorized("Email hoặc mật khẩu không đúng.");
 
             // 🔹 Bỏ kiểm tra email verification - cho phép đăng nhập dù email chưa xác thực
@@ -181,7 +204,7 @@ namespace GiaLaiOCOP.Api.Controllers
             return Ok(new AuthResponseDto { Token = tokenString, Expires = expires });
         }
 
-        [HttpPost("change-password")]
+        [HttpPut("change-password")]
         [Authorize]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
         {
@@ -192,13 +215,16 @@ namespace GiaLaiOCOP.Api.Controllers
             if (user == null)
                 return Unauthorized(new { message = "Phiên đăng nhập đã hết hạn hoặc không hợp lệ" });
 
-            if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.Password))
+            if (!VerifyPassword(user, dto.CurrentPassword))
                 return BadRequest(new { message = "Mật khẩu hiện tại không đúng" });
 
-            if (BCrypt.Net.BCrypt.Verify(dto.NewPassword, user.Password))
+            if (dto.NewPassword != dto.ConfirmNewPassword)
+                return BadRequest(new { message = "Mật khẩu xác nhận không khớp" });
+
+            if (VerifyPassword(user, dto.NewPassword))
                 return BadRequest(new { message = "Mật khẩu mới phải khác mật khẩu hiện tại" });
 
-            user.Password = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            user.Password = _passwordHasher.HashPassword(user, dto.NewPassword);
             user.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
