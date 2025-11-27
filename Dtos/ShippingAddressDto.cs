@@ -13,6 +13,8 @@ namespace GiaLaiOCOP.Api.Dtos
         public string District { get; set; } = string.Empty;
         public string Province { get; set; } = string.Empty;
         public string? Label { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
         public bool IsDefault { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
@@ -48,6 +50,12 @@ namespace GiaLaiOCOP.Api.Dtos
         [StringLength(50, ErrorMessage = "Nhãn không được vượt quá 50 ký tự")]
         public string? Label { get; set; }
 
+        [Range(-90, 90, ErrorMessage = "Vĩ độ phải nằm trong khoảng -90 đến 90")]
+        public double? Latitude { get; set; }
+
+        [Range(-180, 180, ErrorMessage = "Kinh độ phải nằm trong khoảng -180 đến 180")]
+        public double? Longitude { get; set; }
+
         public bool IsDefault { get; set; } = false;
     }
 
@@ -80,6 +88,12 @@ namespace GiaLaiOCOP.Api.Dtos
 
         [StringLength(50, ErrorMessage = "Nhãn không được vượt quá 50 ký tự")]
         public string? Label { get; set; }
+
+        [Range(-90, 90, ErrorMessage = "Vĩ độ phải nằm trong khoảng -90 đến 90")]
+        public double? Latitude { get; set; }
+
+        [Range(-180, 180, ErrorMessage = "Kinh độ phải nằm trong khoảng -180 đến 180")]
+        public double? Longitude { get; set; }
 
         public bool IsDefault { get; set; } = false;
     }

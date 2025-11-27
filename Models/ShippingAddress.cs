@@ -34,6 +34,12 @@ namespace GiaLaiOCOP.Api.Models
         [StringLength(100)]
         public string Province { get; set; } = string.Empty; // Tỉnh/Thành phố
 
+        [Range(-90, 90, ErrorMessage = "Vĩ độ phải nằm trong khoảng -90 đến 90")]
+        public double? Latitude { get; set; }
+
+        [Range(-180, 180, ErrorMessage = "Kinh độ phải nằm trong khoảng -180 đến 180")]
+        public double? Longitude { get; set; }
+
         [StringLength(50)]
         public string? Label { get; set; } // Ví dụ: "Nhà riêng", "Công ty"
 

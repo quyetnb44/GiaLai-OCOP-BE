@@ -4,7 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
+using GiaLaiOCOP.Api.Services;
+using System.Net.Http;
 using System.Security.Claims;
+using System.Threading;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -14,10 +17,12 @@ namespace GiaLaiOCOP.Api.Controllers
     public class ShippingAddressesController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IGpsAddressService _gpsAddressService;
 
-        public ShippingAddressesController(AppDbContext context)
+        public ShippingAddressesController(AppDbContext context, IGpsAddressService gpsAddressService)
         {
             _context = context;
+            _gpsAddressService = gpsAddressService;
         }
 
         // 🔹 Helper: Lấy UserId từ token
@@ -45,10 +50,83 @@ namespace GiaLaiOCOP.Api.Controllers
                 District = address.District,
                 Province = address.Province,
                 Label = address.Label,
+                Latitude = address.Latitude,
+                Longitude = address.Longitude,
                 IsDefault = address.IsDefault,
                 CreatedAt = address.CreatedAt,
                 UpdatedAt = address.UpdatedAt
             };
+        }
+
+        // 🔹 Helper: Map DTO sang model (tạo mới)
+        private ShippingAddress MapToModel(CreateShippingAddressDto dto, int userId)
+        {
+            return new ShippingAddress
+            {
+                UserId = userId,
+                FullName = dto.FullName.Trim(),
+                PhoneNumber = dto.PhoneNumber.Trim(),
+                AddressLine = dto.AddressLine.Trim(),
+                Ward = dto.Ward.Trim(),
+                District = dto.District.Trim(),
+                Province = dto.Province.Trim(),
+                Label = string.IsNullOrWhiteSpace(dto.Label) ? null : dto.Label.Trim(),
+                Latitude = dto.Latitude,
+                Longitude = dto.Longitude,
+                IsDefault = dto.IsDefault,
+                CreatedAt = DateTime.UtcNow
+            };
+        }
+
+        // 🔹 Helper: Map DTO sang model (cập nhật)
+        private void MapToModel(UpdateShippingAddressItemDto dto, ShippingAddress address)
+        {
+            address.FullName = dto.FullName.Trim();
+            address.PhoneNumber = dto.PhoneNumber.Trim();
+            address.AddressLine = dto.AddressLine.Trim();
+            address.Ward = dto.Ward.Trim();
+            address.District = dto.District.Trim();
+            address.Province = dto.Province.Trim();
+            address.Label = string.IsNullOrWhiteSpace(dto.Label) ? null : dto.Label.Trim();
+            address.Latitude = dto.Latitude;
+            address.Longitude = dto.Longitude;
+            address.IsDefault = dto.IsDefault;
+            address.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // 🔹 GET: api/shippingaddress/from-gps - lấy địa chỉ từ GPS
+        [AllowAnonymous]
+        [HttpGet("/api/shippingaddress/from-gps")]
+        public async Task<ActionResult<GpsAddressLookupDto>> GetAddressFromGps([FromQuery] double? lat, [FromQuery] double? lng, CancellationToken cancellationToken)
+        {
+            if (!lat.HasValue || !lng.HasValue)
+            {
+                return BadRequest("Vui lòng cung cấp đầy đủ lat và lng.");
+            }
+
+            if (lat is < -90 or > 90 || lng is < -180 or > 180)
+            {
+                return BadRequest("Tọa độ không hợp lệ. Vĩ độ (-90 đến 90), kinh độ (-180 đến 180).");
+            }
+
+            try
+            {
+                var result = await _gpsAddressService.GetAddressFromGpsAsync(lat.Value, lng.Value, cancellationToken);
+                if (result == null)
+                {
+                    return BadRequest("Không tìm thấy địa chỉ phù hợp với tọa độ đã cung cấp.");
+                }
+
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (HttpRequestException)
+            {
+                return BadRequest("Không thể kết nối tới dịch vụ bản đồ. Vui lòng thử lại sau.");
+            }
         }
 
         // 🔹 GET: api/shipping-addresses - Lấy danh sách địa chỉ của user hiện tại
@@ -128,19 +206,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 }
             }
 
-            var shippingAddress = new ShippingAddress
-            {
-                UserId = currentUserId.Value,
-                FullName = dto.FullName.Trim(),
-                PhoneNumber = dto.PhoneNumber.Trim(),
-                AddressLine = dto.AddressLine.Trim(),
-                Ward = dto.Ward.Trim(),
-                District = dto.District.Trim(),
-                Province = dto.Province.Trim(),
-                Label = string.IsNullOrWhiteSpace(dto.Label) ? null : dto.Label.Trim(),
-                IsDefault = dto.IsDefault,
-                CreatedAt = DateTime.UtcNow
-            };
+            var shippingAddress = MapToModel(dto, currentUserId.Value);
 
             _context.ShippingAddresses.Add(shippingAddress);
             await _context.SaveChangesAsync();
@@ -194,15 +260,7 @@ namespace GiaLaiOCOP.Api.Controllers
             }
 
             // Cập nhật thông tin
-            address.FullName = dto.FullName.Trim();
-            address.PhoneNumber = dto.PhoneNumber.Trim();
-            address.AddressLine = dto.AddressLine.Trim();
-            address.Ward = dto.Ward.Trim();
-            address.District = dto.District.Trim();
-            address.Province = dto.Province.Trim();
-            address.Label = string.IsNullOrWhiteSpace(dto.Label) ? null : dto.Label.Trim();
-            address.IsDefault = dto.IsDefault;
-            address.UpdatedAt = DateTime.UtcNow;
+            MapToModel(dto, address);
 
             await _context.SaveChangesAsync();
 

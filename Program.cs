@@ -77,6 +77,9 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 // 🔹 Add Rating Service
 builder.Services.AddScoped<GiaLaiOCOP.Api.Services.IRatingService, GiaLaiOCOP.Api.Services.RatingService>();
 
+// 🔹 Add GPS Address Service
+builder.Services.AddScoped<IGpsAddressService, GpsAddressService>();
+
 // 🔹 Add HttpClient for external API calls (Vietnam Address API)
 builder.Services.AddHttpClient();
 
