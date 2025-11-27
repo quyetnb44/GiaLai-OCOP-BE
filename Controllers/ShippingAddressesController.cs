@@ -5,6 +5,7 @@ using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using GiaLaiOCOP.Api.Services;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http;
 using System.Security.Claims;
 using System.Threading;
@@ -26,14 +27,27 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 Helper: Lấy UserId từ token
-        private Task<int?> GetCurrentUserIdAsync()
+        private async Task<int?> GetCurrentUserIdAsync()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!string.IsNullOrWhiteSpace(userIdClaim) && int.TryParse(userIdClaim, out var userId))
             {
-                return Task.FromResult<int?>(userId);
+                return userId;
             }
-            return Task.FromResult<int?>(null);
+
+            var emailClaim = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                             ?? User.FindFirst(ClaimTypes.Email)?.Value;
+
+            if (!string.IsNullOrWhiteSpace(emailClaim))
+            {
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == emailClaim);
+                if (user != null)
+                {
+                    return user.Id;
+                }
+            }
+
+            return null;
         }
 
         // 🔹 Helper: Map ShippingAddress to DTO
