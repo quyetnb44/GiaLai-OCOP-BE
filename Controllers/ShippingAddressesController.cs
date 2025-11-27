@@ -12,7 +12,7 @@ using System.Threading;
 namespace GiaLaiOCOP.Api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/shipping-addresses")]
     [Authorize] // Tất cả endpoints đều yêu cầu đăng nhập
     public class ShippingAddressesController : ControllerBase
     {
