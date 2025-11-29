@@ -5,6 +5,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.IdentityModel.Tokens.Jwt;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
 
 namespace GiaLaiOCOP.Api.Tests.Helpers
 {
@@ -179,6 +181,34 @@ namespace GiaLaiOCOP.Api.Tests.Helpers
             var review2 = CreateTestReview(customer.Id, product1.Id, 4, "Good!");
             context.Reviews.AddRange(review1, review2);
             await context.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Tạo JWT token cho testing
+        /// </summary>
+        public static string CreateJwtToken(int userId, string email, string name, string role, string jwtKey, string issuer, string audience, int lifetimeMinutes = 60)
+        {
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, email),
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+                new Claim(ClaimTypes.Name, name),
+                new Claim(ClaimTypes.Role, role ?? "Customer")
+            };
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var expires = DateTime.UtcNow.AddMinutes(lifetimeMinutes);
+
+            var token = new JwtSecurityToken(
+                issuer: issuer,
+                audience: audience,
+                claims: claims,
+                expires: expires,
+                signingCredentials: creds
+            );
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
 }

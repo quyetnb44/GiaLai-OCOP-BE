@@ -36,6 +36,9 @@ namespace GiaLaiOCOP.Api.Models
         // Xác thực email
         public bool IsEmailVerified { get; set; } = false;
         public DateTime? UpdatedAt { get; set; }
+        
+        // 🔐 Thời điểm cập nhật mật khẩu (để invalidate token cũ khi đổi mật khẩu)
+        public DateTime? PasswordUpdatedAt { get; set; }
 
         // Quan hệ: 1 user có thể có nhiều đơn hàng
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON

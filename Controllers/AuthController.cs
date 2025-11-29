@@ -54,21 +54,72 @@ namespace GiaLaiOCOP.Api.Controllers
 
         private async Task<User?> GetUserFromClaimsAsync()
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!string.IsNullOrWhiteSpace(userIdClaim) && int.TryParse(userIdClaim, out var userId))
+            try
             {
-                return await _context.Users.FindAsync(userId);
+                // Log tất cả claims để debug
+                var allClaims = User.Claims.Select(c => $"{c.Type}={c.Value}").ToList();
+                _logger.LogInformation($"GetUserFromClaimsAsync - All claims: {string.Join(", ", allClaims)}");
+
+                // Ưu tiên tìm bằng UserId (ClaimTypes.NameIdentifier)
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                _logger.LogInformation($"GetUserFromClaimsAsync - UserIdClaim: {userIdClaim}");
+                
+                if (!string.IsNullOrWhiteSpace(userIdClaim) && int.TryParse(userIdClaim, out var userId))
+                {
+                    _logger.LogInformation($"GetUserFromClaimsAsync - Parsed userId: {userId}, searching in database...");
+                    
+                    // Đếm tổng số users trong database để debug
+                    var totalUsers = await _context.Users.CountAsync();
+                    _logger.LogInformation($"GetUserFromClaimsAsync - Total users in database: {totalUsers}");
+                    
+                    // Luôn dùng FirstOrDefaultAsync để đảm bảo hoạt động với cả in-memory và real database
+                    var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+                    if (user != null)
+                    {
+                        _logger.LogInformation($"GetUserFromClaimsAsync - ✅ Found user by ID: {userId}, Email: {user.Email}");
+                        return user;
+                    }
+                    
+                    // Nếu không tìm thấy, log tất cả user IDs để debug
+                    var allUserIds = await _context.Users.Select(u => u.Id).ToListAsync();
+                    _logger.LogWarning($"GetUserFromClaimsAsync - ❌ User not found by ID: {userId}. Available user IDs: {string.Join(", ", allUserIds)}");
+                }
+
+                // Fallback: Tìm bằng email (JwtRegisteredClaimNames.Sub hoặc ClaimTypes.Email)
+                var emailClaim = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                                 ?? User.FindFirst(ClaimTypes.Email)?.Value;
+                
+                _logger.LogInformation($"GetUserFromClaimsAsync - EmailClaim: {emailClaim}");
+
+                if (!string.IsNullOrWhiteSpace(emailClaim))
+                {
+                    var emailLower = emailClaim.Trim().ToLower();
+                    _logger.LogInformation($"GetUserFromClaimsAsync - Searching by email (lowercase): {emailLower}");
+                    
+                    var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == emailLower);
+                    if (user != null)
+                    {
+                        _logger.LogInformation($"GetUserFromClaimsAsync - ✅ Found user by email: {emailLower}, ID: {user.Id}");
+                        return user;
+                    }
+                    
+                    // Nếu không tìm thấy, log tất cả emails để debug
+                    var allEmails = await _context.Users.Select(u => u.Email).ToListAsync();
+                    _logger.LogWarning($"GetUserFromClaimsAsync - ❌ User not found by email: {emailLower}. Available emails: {string.Join(", ", allEmails)}");
+                }
+                else
+                {
+                    _logger.LogWarning("GetUserFromClaimsAsync - No email claim found");
+                }
+
+                _logger.LogError("GetUserFromClaimsAsync - ❌ User not found by any method");
+                return null;
             }
-
-            var emailClaim = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-                             ?? User.FindFirst(ClaimTypes.Email)?.Value;
-
-            if (!string.IsNullOrWhiteSpace(emailClaim))
+            catch (Exception ex)
             {
-                return await _context.Users.FirstOrDefaultAsync(u => u.Email == emailClaim);
+                _logger.LogError(ex, "GetUserFromClaimsAsync - Exception occurred");
+                return null;
             }
-
-            return null;
         }
 
         private string GetJwtKey()
@@ -83,23 +134,68 @@ namespace GiaLaiOCOP.Api.Controllers
 
         private bool VerifyPassword(User user, string providedPassword)
         {
-            try
+            if (string.IsNullOrWhiteSpace(user.Password) || string.IsNullOrWhiteSpace(providedPassword))
             {
-                var result = _passwordHasher.VerifyHashedPassword(user, user.Password, providedPassword);
-                if (result == PasswordVerificationResult.Success || result == PasswordVerificationResult.SuccessRehashNeeded)
-                {
-                    return true;
-                }
-            }
-            catch (FormatException)
-            {
-                // Legacy bcrypt hash format, fall back below
-            }
-            catch (ArgumentException)
-            {
+                return false;
             }
 
-            return BCrypt.Net.BCrypt.Verify(providedPassword, user.Password);
+            // Kiểm tra xem password hash có phải là BCrypt format không (bắt đầu với $2a$, $2b$, $2x$, $2y$)
+            var isBcryptHash = user.Password.StartsWith("$2a$") || 
+                              user.Password.StartsWith("$2b$") || 
+                              user.Password.StartsWith("$2x$") || 
+                              user.Password.StartsWith("$2y$");
+
+            if (isBcryptHash)
+            {
+                // Password được hash bằng BCrypt
+                try
+                {
+                    return BCrypt.Net.BCrypt.Verify(providedPassword, user.Password);
+                }
+                catch (BCrypt.Net.SaltParseException ex)
+                {
+                    _logger.LogWarning($"BCrypt verification failed for user {user.Id}: {ex.Message}");
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"BCrypt verification error for user {user.Id}: {ex.Message}");
+                    return false;
+                }
+            }
+            else
+            {
+                // Password được hash bằng PasswordHasher (ASP.NET Identity)
+                try
+                {
+                    var result = _passwordHasher.VerifyHashedPassword(user, user.Password, providedPassword);
+                    return result == PasswordVerificationResult.Success || 
+                           result == PasswordVerificationResult.SuccessRehashNeeded;
+                }
+                catch (FormatException ex)
+                {
+                    _logger.LogWarning($"PasswordHasher verification failed (FormatException) for user {user.Id}: {ex.Message}");
+                    // Fallback: thử BCrypt nếu PasswordHasher fail
+                    try
+                    {
+                        return BCrypt.Net.BCrypt.Verify(providedPassword, user.Password);
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+                catch (ArgumentException ex)
+                {
+                    _logger.LogWarning($"PasswordHasher verification failed (ArgumentException) for user {user.Id}: {ex.Message}");
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"PasswordHasher verification error for user {user.Id}: {ex.Message}");
+                    return false;
+                }
+            }
         }
 
         // 🔹 POST /api/auth/register - ĐĂNG KÝ (Không cần OTP)
@@ -128,10 +224,11 @@ namespace GiaLaiOCOP.Api.Controllers
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            // Tạo JWT token cho user mới đăng ký
+            // Tạo JWT token cho user mới đăng ký - đảm bảo email được normalize
+            var normalizedEmail = user.Email.Trim().ToLower();
             var claims = new List<Claim>
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+                new Claim(JwtRegisteredClaimNames.Sub, normalizedEmail), // Dùng email đã normalize
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Name),
                 new Claim(ClaimTypes.Role, user.Role ?? "Customer")
@@ -177,10 +274,11 @@ namespace GiaLaiOCOP.Api.Controllers
             // 🔹 Bỏ kiểm tra email verification - cho phép đăng nhập dù email chưa xác thực
             // Email verification chỉ là optional, không bắt buộc để đăng nhập
 
-            // tạo claims
+            // tạo claims - đảm bảo email được normalize để tránh vấn đề case sensitivity
+            var normalizedEmail = user.Email.Trim().ToLower();
             var claims = new List<Claim>
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+                new Claim(JwtRegisteredClaimNames.Sub, normalizedEmail), // Dùng email đã normalize
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Name),
                 new Claim(ClaimTypes.Role, user.Role ?? "Customer")
@@ -204,32 +302,190 @@ namespace GiaLaiOCOP.Api.Controllers
             return Ok(new AuthResponseDto { Token = tokenString, Expires = expires });
         }
 
+        // 🔹 Helper: Tạo JWT token cho user và trả về token cùng với thời gian hết hạn
+        private (string Token, DateTime Expires) GenerateJwtToken(User user)
+        {
+            var normalizedEmail = user.Email.Trim().ToLower();
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, normalizedEmail),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Name, user.Name),
+                new Claim(ClaimTypes.Role, user.Role ?? "Customer")
+            };
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(GetJwtKey()));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var expires = DateTime.UtcNow.AddMinutes(int.Parse(_config["Jwt:TokenLifetimeMinutes"] ?? "60"));
+
+            var token = new JwtSecurityToken(
+                issuer: _config["Jwt:Issuer"],
+                audience: _config["Jwt:Audience"],
+                claims: claims,
+                expires: expires,
+                signingCredentials: creds
+            );
+
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+            return (tokenString, expires);
+        }
+
+        // 🔹 PUT /api/auth/change-password - Đổi mật khẩu cho user đã đăng nhập
         [HttpPut("change-password")]
         [Authorize]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            try
+            {
+                // 1. Kiểm tra ModelState validation
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
 
-            var user = await GetUserFromClaimsAsync();
-            if (user == null)
-                return Unauthorized(new { message = "Phiên đăng nhập đã hết hạn hoặc không hợp lệ" });
+                // 2. Log tất cả claims để debug
+                var allClaims = User.Claims.Select(c => $"{c.Type}={c.Value}").ToList();
+                _logger.LogInformation($"ChangePassword - All claims from token: {string.Join(", ", allClaims)}");
 
-            if (!VerifyPassword(user, dto.CurrentPassword))
-                return BadRequest(new { message = "Mật khẩu hiện tại không đúng" });
+                // 3. Lấy user từ JWT token - thử nhiều cách
+                User? user = null;
 
-            if (dto.NewPassword != dto.ConfirmNewPassword)
-                return BadRequest(new { message = "Mật khẩu xác nhận không khớp" });
+                // Cách 1: Tìm bằng UserId từ ClaimTypes.NameIdentifier
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrWhiteSpace(userIdClaim) && int.TryParse(userIdClaim, out var userId))
+                {
+                    _logger.LogInformation($"ChangePassword - Trying to find user by ID: {userId}");
+                    user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+                    if (user != null)
+                    {
+                        _logger.LogInformation($"ChangePassword - ✅ Found user by ID: {userId}, Email: {user.Email}");
+                    }
+                }
 
-            if (VerifyPassword(user, dto.NewPassword))
-                return BadRequest(new { message = "Mật khẩu mới phải khác mật khẩu hiện tại" });
+                // Cách 2: Tìm bằng email từ JwtRegisteredClaimNames.Sub
+                if (user == null)
+                {
+                    var subClaim = User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+                    if (!string.IsNullOrWhiteSpace(subClaim))
+                    {
+                        var emailLower = subClaim.Trim().ToLower();
+                        _logger.LogInformation($"ChangePassword - Trying to find user by email (Sub claim): {emailLower}");
+                        user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == emailLower);
+                        if (user != null)
+                        {
+                            _logger.LogInformation($"ChangePassword - ✅ Found user by email (Sub): {emailLower}, ID: {user.Id}");
+                        }
+                    }
+                }
 
-            user.Password = _passwordHasher.HashPassword(user, dto.NewPassword);
-            user.UpdatedAt = DateTime.UtcNow;
+                // Cách 3: Tìm bằng email từ ClaimTypes.Email
+                if (user == null)
+                {
+                    var emailClaim = User.FindFirst(ClaimTypes.Email)?.Value;
+                    if (!string.IsNullOrWhiteSpace(emailClaim))
+                    {
+                        var emailLower = emailClaim.Trim().ToLower();
+                        _logger.LogInformation($"ChangePassword - Trying to find user by email (Email claim): {emailLower}");
+                        user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == emailLower);
+                        if (user != null)
+                        {
+                            _logger.LogInformation($"ChangePassword - ✅ Found user by email (Email claim): {emailLower}, ID: {user.Id}");
+                        }
+                    }
+                }
 
-            await _context.SaveChangesAsync();
+                // Cách 4: Tìm bằng tất cả claims có chứa @ (email)
+                if (user == null)
+                {
+                    foreach (var claim in User.Claims)
+                    {
+                        if (claim.Value.Contains("@"))
+                        {
+                            var emailLower = claim.Value.Trim().ToLower();
+                            _logger.LogInformation($"ChangePassword - Trying to find user by email from claim {claim.Type}: {emailLower}");
+                            user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == emailLower);
+                            if (user != null)
+                            {
+                                _logger.LogInformation($"ChangePassword - ✅ Found user by email from claim {claim.Type}: {emailLower}, ID: {user.Id}");
+                                break;
+                            }
+                        }
+                    }
+                }
 
-            return Ok(new { message = "Đổi mật khẩu thành công" });
+                // Nếu vẫn không tìm thấy user
+                if (user == null)
+                {
+                    _logger.LogError($"ChangePassword - ❌ User not found from any claims. Available users: {await _context.Users.CountAsync()}");
+                    return Unauthorized(new { message = "Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại." });
+                }
+
+                _logger.LogInformation($"ChangePassword - Processing for user ID: {user.Id}, Email: {user.Email}");
+
+                // 4. Kiểm tra mật khẩu hiện tại
+                if (!VerifyPassword(user, dto.CurrentPassword))
+                {
+                    _logger.LogWarning($"ChangePassword - Invalid current password for user: {user.Email}");
+                    return BadRequest(new { message = "Mật khẩu hiện tại không đúng" });
+                }
+
+                // 5. Kiểm tra mật khẩu xác nhận khớp với mật khẩu mới
+                if (dto.NewPassword != dto.ConfirmNewPassword)
+                {
+                    _logger.LogWarning($"ChangePassword - Password confirmation mismatch for user: {user.Email}");
+                    return BadRequest(new { message = "Mật khẩu xác nhận không khớp với mật khẩu mới" });
+                }
+
+                // 6. Validate mật khẩu mới (kiểm tra lại vì có thể bypass ModelState)
+                if (string.IsNullOrWhiteSpace(dto.NewPassword))
+                {
+                    return BadRequest(new { message = "Mật khẩu mới không được để trống" });
+                }
+
+                if (dto.NewPassword.Length < 6 || dto.NewPassword.Length > 100)
+                {
+                    return BadRequest(new { message = "Mật khẩu mới phải có từ 6 đến 100 ký tự" });
+                }
+
+                // Kiểm tra format: phải có chữ hoa, chữ thường và số
+                if (!System.Text.RegularExpressions.Regex.IsMatch(dto.NewPassword, @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$"))
+                {
+                    return BadRequest(new { message = "Mật khẩu mới phải chứa ít nhất một chữ hoa, một chữ thường và một số" });
+                }
+
+                // 7. Kiểm tra mật khẩu mới phải khác mật khẩu hiện tại
+                if (VerifyPassword(user, dto.NewPassword))
+                {
+                    return BadRequest(new { message = "Mật khẩu mới phải khác mật khẩu hiện tại" });
+                }
+
+                // 8. Hash mật khẩu mới
+                user.Password = _passwordHasher.HashPassword(user, dto.NewPassword);
+
+                // 9. Cập nhật PasswordUpdatedAt để invalidate các token cũ
+                user.PasswordUpdatedAt = DateTime.UtcNow;
+                user.UpdatedAt = DateTime.UtcNow;
+
+                // 10. Lưu vào database
+                await _context.SaveChangesAsync();
+                _logger.LogInformation($"ChangePassword - Password updated successfully for user: {user.Email}");
+
+                // 11. Tạo JWT token mới
+                var (newToken, expires) = GenerateJwtToken(user);
+
+                _logger.LogInformation($"ChangePassword - New token generated for user: {user.Email}");
+
+                // 12. Trả về token mới cho FE
+                return Ok(new AuthResponseDto
+                {
+                    Token = newToken,
+                    Expires = expires,
+                    Message = "Đổi mật khẩu thành công. Vui lòng lưu token mới để tiếp tục sử dụng."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"ChangePassword - Exception occurred. Claims: {string.Join(", ", User.Claims.Select(c => $"{c.Type}={c.Value}"))}");
+                return StatusCode(500, new { message = "Đã xảy ra lỗi khi đổi mật khẩu. Vui lòng thử lại sau." });
+            }
         }
 
         // 🔹 POST /api/auth/send-otp - Gửi mã OTP đến email
@@ -421,7 +677,7 @@ namespace GiaLaiOCOP.Api.Controllers
             // Tạo JWT token
             var claims = new List<Claim>
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+                new Claim(JwtRegisteredClaimNames.Sub, user.Email.Trim().ToLower()),
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Name, user.Name),
                 new Claim(ClaimTypes.Role, user.Role ?? "Customer")
