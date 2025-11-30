@@ -4,9 +4,8 @@ namespace GiaLaiOCOP.Api.Dtos
 {
     public class UpdateEnterpriseDto
     {
-        [Required(ErrorMessage = "Tên doanh nghiệp là bắt buộc.")]
         [MaxLength(255)]
-        public string Name { get; set; } = string.Empty;
+        public string? Name { get; set; }
 
         [MaxLength(2000)]
         public string? Description { get; set; }
@@ -48,8 +47,15 @@ namespace GiaLaiOCOP.Api.Dtos
         [MaxLength(500)]
         public string? ImageUrl { get; set; }
 
-        // ⚠️ Lưu ý: OCOPRating không được phép cập nhật bởi EnterpriseAdmin
-        // Chỉ SystemAdmin mới có thể cập nhật OCOPRating
+        // 🔹 Các trường chỉ SystemAdmin mới có thể cập nhật
+        [Range(0, 5, ErrorMessage = "OCOPRating phải nằm trong khoảng 0 đến 5.")]
+        public int? OCOPRating { get; set; }
+
+        [MaxLength(50)]
+        public string? ApprovalStatus { get; set; }
+
+        [MaxLength(1000)]
+        public string? RejectionReason { get; set; }
     }
 }
 

@@ -391,16 +391,187 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // PUT: api/Enterprises/5 - Chỉ SystemAdmin
+        // Cập nhật thông tin enterprise (chấp nhận UpdateEnterpriseDto - chỉ cần gửi các trường muốn cập nhật)
         [HttpPut("{id}")]
         [Authorize(Roles = "SystemAdmin")]
-        public async Task<IActionResult> UpdateEnterprise(int id, [FromBody] Enterprise enterprise)
+        public async Task<ActionResult<EnterpriseDto>> UpdateEnterprise(int id, [FromBody] UpdateEnterpriseDto dto)
         {
-            if (id != enterprise.Id) return BadRequest();
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
 
-            _context.Entry(enterprise).State = EntityState.Modified;
-            await _context.SaveChangesAsync();
+            var enterprise = await _context.Enterprises
+                .Include(e => e.Products)!
+                    .ThenInclude(p => p.Category)
+                .Include(e => e.Users)
+                .FirstOrDefaultAsync(e => e.Id == id);
 
-            return NoContent();
+            if (enterprise == null)
+                return NotFound();
+
+            var hasChanges = false;
+
+            // Cập nhật các trường được cung cấp
+            if (dto.Name != null && !string.IsNullOrWhiteSpace(dto.Name) && dto.Name.Trim() != enterprise.Name)
+            {
+                enterprise.Name = dto.Name.Trim();
+                hasChanges = true;
+            }
+
+            if (dto.Description != null)
+            {
+                var normalizedDescription = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
+                if (normalizedDescription != enterprise.Description)
+                {
+                    enterprise.Description = normalizedDescription;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.Address != null)
+            {
+                var normalizedAddress = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim();
+                if (normalizedAddress != enterprise.Address)
+                {
+                    enterprise.Address = normalizedAddress;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.Ward != null)
+            {
+                var normalizedWard = string.IsNullOrWhiteSpace(dto.Ward) ? null : dto.Ward.Trim();
+                if (normalizedWard != enterprise.Ward)
+                {
+                    enterprise.Ward = normalizedWard;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.District != null)
+            {
+                var normalizedDistrict = string.IsNullOrWhiteSpace(dto.District) ? null : dto.District.Trim();
+                if (normalizedDistrict != enterprise.District)
+                {
+                    enterprise.District = normalizedDistrict;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.Province != null)
+            {
+                var normalizedProvince = string.IsNullOrWhiteSpace(dto.Province) ? null : dto.Province.Trim();
+                if (normalizedProvince != enterprise.Province)
+                {
+                    enterprise.Province = normalizedProvince;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.Latitude.HasValue && dto.Latitude.Value != enterprise.Latitude)
+            {
+                enterprise.Latitude = dto.Latitude.Value;
+                hasChanges = true;
+            }
+
+            if (dto.Longitude.HasValue && dto.Longitude.Value != enterprise.Longitude)
+            {
+                enterprise.Longitude = dto.Longitude.Value;
+                hasChanges = true;
+            }
+
+            if (dto.PhoneNumber != null)
+            {
+                var normalizedPhone = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+                if (normalizedPhone != enterprise.PhoneNumber)
+                {
+                    enterprise.PhoneNumber = normalizedPhone;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.EmailContact != null)
+            {
+                var normalizedEmail = string.IsNullOrWhiteSpace(dto.EmailContact) ? null : dto.EmailContact.Trim().ToLower();
+                if (normalizedEmail != enterprise.EmailContact)
+                {
+                    enterprise.EmailContact = normalizedEmail;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.Website != null)
+            {
+                var normalizedWebsite = string.IsNullOrWhiteSpace(dto.Website) ? null : dto.Website.Trim();
+                if (normalizedWebsite != enterprise.Website)
+                {
+                    enterprise.Website = normalizedWebsite;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.BusinessField != null)
+            {
+                var normalizedField = string.IsNullOrWhiteSpace(dto.BusinessField) ? null : dto.BusinessField.Trim();
+                if (normalizedField != enterprise.BusinessField)
+                {
+                    enterprise.BusinessField = normalizedField;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.ImageUrl != null)
+            {
+                var normalizedImageUrl = string.IsNullOrWhiteSpace(dto.ImageUrl) ? null : dto.ImageUrl.Trim();
+                if (normalizedImageUrl != enterprise.ImageUrl)
+                {
+                    enterprise.ImageUrl = normalizedImageUrl;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.OCOPRating.HasValue && dto.OCOPRating.Value != enterprise.OCOPRating)
+            {
+                enterprise.OCOPRating = dto.OCOPRating.Value;
+                hasChanges = true;
+            }
+
+            if (dto.ApprovalStatus != null)
+            {
+                var normalizedStatus = string.IsNullOrWhiteSpace(dto.ApprovalStatus) ? null : dto.ApprovalStatus.Trim();
+                if (normalizedStatus != enterprise.ApprovalStatus)
+                {
+                    enterprise.ApprovalStatus = normalizedStatus;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.RejectionReason != null)
+            {
+                var normalizedReason = string.IsNullOrWhiteSpace(dto.RejectionReason) ? null : dto.RejectionReason.Trim();
+                if (normalizedReason != enterprise.RejectionReason)
+                {
+                    enterprise.RejectionReason = normalizedReason;
+                    hasChanges = true;
+                }
+            }
+
+            if (hasChanges)
+            {
+                enterprise.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
+            // Reload để lấy dữ liệu mới nhất
+            enterprise = await _context.Enterprises
+                .Include(e => e.Products)!
+                    .ThenInclude(p => p.Category)
+                .Include(e => e.Users)
+                .FirstOrDefaultAsync(e => e.Id == id);
+
+            if (enterprise == null)
+                return NotFound();
+
+            return Ok(MapEnterpriseToDto(enterprise));
         }
 
         // DELETE: api/Enterprises/5 - Chỉ SystemAdmin
