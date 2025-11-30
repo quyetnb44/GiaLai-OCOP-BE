@@ -31,7 +31,7 @@ namespace GiaLaiOCOP.Api.Models
         public int? EnterpriseId { get; set; } // Cho ảnh doanh nghiệp
 
         // 🔹 Thông tin người upload
-        public int UploadedByUserId { get; set; } // User ID của người upload
+        public int? UploadedByUserId { get; set; } // User ID của người upload (nullable để có thể set null khi xóa user)
         public string UploadedByRole { get; set; } = string.Empty; // Role của người upload
 
         // 🔹 Trạng thái

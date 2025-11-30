@@ -141,7 +141,7 @@ namespace GiaLaiOCOP.Api.Data
                 .HasOne(img => img.UploadedByUser)
                 .WithMany()
                 .HasForeignKey(img => img.UploadedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.SetNull);
 
             // 🟩 Cấu hình quan hệ Province - District (1-n)
             modelBuilder.Entity<Province>()
