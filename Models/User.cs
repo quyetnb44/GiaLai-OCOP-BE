@@ -39,6 +39,9 @@ namespace GiaLaiOCOP.Api.Models
         
         // 🔐 Thời điểm cập nhật mật khẩu (để invalidate token cũ khi đổi mật khẩu)
         public DateTime? PasswordUpdatedAt { get; set; }
+        
+        // 🔒 Trạng thái tài khoản (để SystemAdmin vô hiệu hóa/kích hoạt)
+        public bool IsActive { get; set; } = true;
 
         // Quan hệ: 1 user có thể có nhiều đơn hàng
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON

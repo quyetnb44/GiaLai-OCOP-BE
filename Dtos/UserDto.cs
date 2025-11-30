@@ -11,6 +11,7 @@ public class UserDto
     public int? EnterpriseId { get; set; }            // thêm EnterpriseId (nullable)
     public EnterpriseDto? Enterprise { get; set; }    // thêm Enterprise (nullable)
     public bool IsEmailVerified { get; set; } = false; // Trạng thái xác thực email
+    public bool IsActive { get; set; } = true; // Trạng thái tài khoản (vô hiệu hóa/kích hoạt)
     public string? PhoneNumber { get; set; }
     public string? Gender { get; set; }
     public DateTime? DateOfBirth { get; set; }

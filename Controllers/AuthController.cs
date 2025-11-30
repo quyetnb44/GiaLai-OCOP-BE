@@ -271,6 +271,10 @@ namespace GiaLaiOCOP.Api.Controllers
             if (!VerifyPassword(user, dto.Password))
                 return Unauthorized("Email hoặc mật khẩu không đúng.");
 
+            // 🔹 Kiểm tra tài khoản có bị vô hiệu hóa không
+            if (!user.IsActive)
+                return Unauthorized("Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.");
+
             // 🔹 Bỏ kiểm tra email verification - cho phép đăng nhập dù email chưa xác thực
             // Email verification chỉ là optional, không bắt buộc để đăng nhập
 
@@ -656,6 +660,10 @@ namespace GiaLaiOCOP.Api.Controllers
             
             if (user == null)
                 return Unauthorized("Email không tồn tại trong hệ thống.");
+
+            // 🔹 Kiểm tra tài khoản có bị vô hiệu hóa không
+            if (!user.IsActive)
+                return Unauthorized("Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.");
 
             // Xác thực OTP
             var emailVerification = await _context.EmailVerifications
