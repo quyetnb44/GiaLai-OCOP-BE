@@ -489,6 +489,12 @@ namespace GiaLaiOCOP.Api.Controllers
                 }
             }
 
+            if (dto.IsActive.HasValue && dto.IsActive.Value != user.IsActive)
+            {
+                user.IsActive = dto.IsActive.Value;
+                hasChanges = true;
+            }
+
             if (hasChanges)
             {
                 user.UpdatedAt = DateTime.UtcNow;
