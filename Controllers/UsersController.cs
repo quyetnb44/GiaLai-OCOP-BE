@@ -360,134 +360,120 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 DELETE: api/users/{id} - Chỉ SystemAdmin
-        // Xóa User và TẤT CẢ dữ liệu liên quan (Orders, OrderItems, Payments, Reviews, v.v.)
+        // Xóa User trực tiếp, database sẽ tự động cascade delete các dữ liệu liên quan
+        // Chỉ xử lý các trường hợp có Restrict constraint
         [Authorize(Roles = "SystemAdmin")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(int id)
         {
-            var user = await _context.Users
-                .Include(u => u.Orders)
-                    .ThenInclude(o => o.OrderItems)
-                .Include(u => u.Orders)
-                    .ThenInclude(o => o.Payments)
-                .Include(u => u.ShippingAddresses)
-                .Include(u => u.Images)
-                .Include(u => u.Notifications)
-                .FirstOrDefaultAsync(u => u.Id == id);
-            
-            if (user == null) return NotFound();
-
-            // 🔹 1. Xóa Orders và tất cả dữ liệu liên quan
-            if (user.Orders != null && user.Orders.Any())
+            try
             {
-                foreach (var order in user.Orders.ToList())
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == id);
+                
+                if (user == null) 
                 {
-                    // Xóa OrderItems (có cascade nhưng xóa thủ công để chắc chắn)
-                    if (order.OrderItems != null && order.OrderItems.Any())
-                    {
-                        _context.OrderItems.RemoveRange(order.OrderItems);
-                    }
+                    return NotFound(new { message = $"Không tìm thấy người dùng với ID {id}" });
+                }
 
-                    // Xóa Payments (có cascade nhưng xóa thủ công để chắc chắn)
-                    if (order.Payments != null && order.Payments.Any())
-                    {
-                        _context.Payments.RemoveRange(order.Payments);
-                    }
+                Console.WriteLine($"🔹 Bắt đầu xóa user {id}: {user.Name} ({user.Email})");
 
-                    // Xóa Notifications liên quan đến Order
-                    var orderNotifications = await _context.Notifications
-                        .Where(n => n.OrderId == order.Id)
-                        .ToListAsync();
-                    if (orderNotifications.Any())
+                // 🔹 Chỉ xử lý các trường hợp có Restrict constraint (không thể cascade delete)
+                // 1. Orders có Restrict - cần xóa trước
+                var orders = await _context.Orders
+                    .Where(o => o.UserId == id)
+                    .ToListAsync();
+                if (orders.Any())
+                {
+                    Console.WriteLine($"🔹 Xóa {orders.Count} Orders (Restrict constraint)...");
+                    // Xóa OrderItems và Payments sẽ được cascade delete tự động
+                    _context.Orders.RemoveRange(orders);
+                }
+
+                // 2. Images được upload bởi user (UploadedByUserId) có Restrict - cần set null
+                var imagesUploadedByUser = await _context.Images
+                    .Where(img => img.UploadedByUserId == id)
+                    .ToListAsync();
+                if (imagesUploadedByUser.Any())
+                {
+                    Console.WriteLine($"🔹 Set null cho {imagesUploadedByUser.Count} Images (UploadedByUserId - Restrict constraint)...");
+                    foreach (var img in imagesUploadedByUser)
                     {
-                        _context.Notifications.RemoveRange(orderNotifications);
+                        img.UploadedByUserId = null;
                     }
                 }
 
-                // Xóa tất cả Orders
-                _context.Orders.RemoveRange(user.Orders);
-            }
+                // 3. InventoryHistory có SetNull - sẽ tự động set null, nhưng xử lý để chắc chắn
+                var inventoryHistories = await _context.InventoryHistories
+                    .Where(ih => ih.CreatedByUserId == id)
+                    .ToListAsync();
+                if (inventoryHistories.Any())
+                {
+                    Console.WriteLine($"🔹 Set null cho {inventoryHistories.Count} InventoryHistories (SetNull constraint)...");
+                    foreach (var ih in inventoryHistories)
+                    {
+                        ih.CreatedByUserId = null;
+                    }
+                }
 
-            // 🔹 2. Xóa ShippingAddresses
-            if (user.ShippingAddresses != null && user.ShippingAddresses.Any())
-            {
-                _context.ShippingAddresses.RemoveRange(user.ShippingAddresses);
-            }
+                // 4. Products có ApprovedByUserId - cần set null
+                var productsApprovedByUser = await _context.Products
+                    .Where(p => p.ApprovedByUserId == id)
+                    .ToListAsync();
+                if (productsApprovedByUser.Any())
+                {
+                    Console.WriteLine($"🔹 Set null cho {productsApprovedByUser.Count} Products (ApprovedByUserId)...");
+                    foreach (var product in productsApprovedByUser)
+                    {
+                        product.ApprovedByUserId = null;
+                    }
+                }
 
-            // 🔹 3. Xóa Notifications
-            if (user.Notifications != null && user.Notifications.Any())
-            {
-                _context.Notifications.RemoveRange(user.Notifications);
-            }
-
-            // 🔹 4. Xóa Images liên quan đến user (avatar)
-            if (user.Images != null && user.Images.Any())
-            {
-                _context.Images.RemoveRange(user.Images);
-            }
-
-            // 🔹 5. Set null cho Images được upload bởi user này (vì có Restrict)
-            var imagesUploadedByUser = await _context.Images
-                .Where(img => img.UploadedByUserId == id)
-                .ToListAsync();
-            foreach (var img in imagesUploadedByUser)
-            {
-                img.UploadedByUserId = null; // Set null thay vì xóa
-            }
-
-            // 🔹 6. Set null cho InventoryHistory được tạo bởi user này
-            var inventoryHistories = await _context.InventoryHistories
-                .Where(ih => ih.CreatedByUserId == id)
-                .ToListAsync();
-            foreach (var ih in inventoryHistories)
-            {
-                ih.CreatedByUserId = null;
-            }
-
-            // 🔹 7. Set null cho Product được approve bởi user này
-            var productsApprovedByUser = await _context.Products
-                .Where(p => p.ApprovedByUserId == id)
-                .ToListAsync();
-            foreach (var product in productsApprovedByUser)
-            {
-                product.ApprovedByUserId = null;
-            }
-
-            // 🔹 8. Xóa Reviews của user
-            var reviews = await _context.Reviews
-                .Where(r => r.UserId == id)
-                .ToListAsync();
-            if (reviews.Any())
-            {
-                _context.Reviews.RemoveRange(reviews);
-            }
-
-            // 🔹 9. Xóa EnterpriseApplications của user
-            var enterpriseApplications = await _context.EnterpriseApplications
-                .Where(ea => ea.UserId == id)
-                .ToListAsync();
-            if (enterpriseApplications.Any())
-            {
-                _context.EnterpriseApplications.RemoveRange(enterpriseApplications);
-            }
-
-            // 🔹 10. Cuối cùng mới xóa User
-            _context.Users.Remove(user);
-            
-            try
-            {
+                // 🔹 Xóa User trực tiếp - Database sẽ tự động cascade delete:
+                // - ShippingAddresses (Cascade)
+                // - Notifications (Cascade)
+                // - Images (avatar - Cascade)
+                // - Reviews (sẽ được xóa)
+                // - EnterpriseApplications (sẽ được xóa)
+                Console.WriteLine($"🔹 Xóa User {id} trực tiếp (database sẽ tự động xóa các dữ liệu liên quan)...");
+                _context.Users.Remove(user);
+                
+                // Lưu tất cả thay đổi
                 await _context.SaveChangesAsync();
+                Console.WriteLine($"✅ Đã xóa user {id} thành công! Database đã tự động xóa các dữ liệu liên quan.");
+                
                 return NoContent();
             }
             catch (DbUpdateException ex)
             {
                 // Log lỗi chi tiết
-                Console.WriteLine($"Error deleting user {id}: {ex.Message}");
+                var errorMessage = $"Error deleting user {id}: {ex.Message}";
+                Console.WriteLine($"❌ {errorMessage}");
+                
                 if (ex.InnerException != null)
                 {
-                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                    var innerMessage = $"Inner exception: {ex.InnerException.Message}";
+                    Console.WriteLine($"❌ {innerMessage}");
+                    errorMessage += $" | {innerMessage}";
                 }
-                return StatusCode(500, new { message = "Lỗi khi xóa người dùng. Vui lòng thử lại sau.", error = ex.Message });
+
+                // Trả về lỗi với thông tin chi tiết
+                return StatusCode(500, new { 
+                    message = "Lỗi khi xóa người dùng. Vui lòng thử lại sau.", 
+                    error = ex.Message,
+                    details = ex.InnerException?.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                // Bắt tất cả các lỗi khác
+                var errorMessage = $"Unexpected error deleting user {id}: {ex.Message}";
+                Console.WriteLine($"❌ {errorMessage}");
+                
+                return StatusCode(500, new { 
+                    message = "Lỗi không mong đợi khi xóa người dùng.", 
+                    error = ex.Message
+                });
             }
         }
     }
