@@ -349,14 +349,161 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 PUT: api/users/{id} - Chỉ SystemAdmin
+        // Cập nhật thông tin user (chấp nhận UpdateUserDto - chỉ cần gửi các trường muốn cập nhật)
         [Authorize(Roles = "SystemAdmin")]
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutUser(int id, User user)
+        public async Task<ActionResult<UserDto>> PutUser(int id, [FromBody] UpdateUserDto dto)
         {
-            if (id != user.Id) return BadRequest();
-            _context.Entry(user).State = EntityState.Modified;
-            await _context.SaveChangesAsync();
-            return NoContent();
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var user = await _context.Users
+                .Include(u => u.Enterprise)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (user == null)
+                return NotFound();
+
+            var hasChanges = false;
+
+            // Cập nhật các trường được cung cấp
+            if (!string.IsNullOrWhiteSpace(dto.Name) && dto.Name.Trim() != user.Name)
+            {
+                user.Name = dto.Name.Trim();
+                hasChanges = true;
+            }
+
+            if (dto.Email != null && !string.IsNullOrWhiteSpace(dto.Email))
+            {
+                var newEmail = dto.Email.Trim().ToLower();
+                if (!newEmail.Equals(user.Email, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (await _context.Users.AnyAsync(u => u.Email == newEmail && u.Id != id))
+                        return Conflict("Email đã được sử dụng bởi người dùng khác.");
+
+                    user.Email = newEmail;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.Role != null && !string.IsNullOrWhiteSpace(dto.Role))
+            {
+                var newRole = dto.Role.Trim();
+                if (newRole != user.Role)
+                {
+                    user.Role = newRole;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.EnterpriseId.HasValue && dto.EnterpriseId.Value != user.EnterpriseId)
+            {
+                // Validate enterprise exists
+                if (dto.EnterpriseId.Value > 0)
+                {
+                    var enterprise = await _context.Enterprises.FindAsync(dto.EnterpriseId.Value);
+                    if (enterprise == null)
+                        return BadRequest("EnterpriseId không hợp lệ.");
+                }
+                user.EnterpriseId = dto.EnterpriseId.Value;
+                hasChanges = true;
+            }
+
+            if (dto.PhoneNumber != null)
+            {
+                var normalizedPhone = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+                if (normalizedPhone != user.PhoneNumber)
+                {
+                    user.PhoneNumber = normalizedPhone;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.Gender != null)
+            {
+                var normalizedGender = string.IsNullOrWhiteSpace(dto.Gender) ? null : dto.Gender.Trim();
+                if (normalizedGender != user.Gender)
+                {
+                    user.Gender = normalizedGender;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.DateOfBirth.HasValue && dto.DateOfBirth != user.DateOfBirth)
+            {
+                user.DateOfBirth = dto.DateOfBirth;
+                hasChanges = true;
+            }
+
+            if (dto.ShippingAddress != null)
+            {
+                var normalizedAddress = string.IsNullOrWhiteSpace(dto.ShippingAddress) ? null : dto.ShippingAddress.Trim();
+                if (normalizedAddress != user.ShippingAddress)
+                {
+                    user.ShippingAddress = normalizedAddress;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.AvatarUrl != null)
+            {
+                var normalizedAvatar = string.IsNullOrWhiteSpace(dto.AvatarUrl) ? null : dto.AvatarUrl.Trim();
+                if (normalizedAvatar != user.AvatarUrl)
+                {
+                    user.AvatarUrl = normalizedAvatar;
+                    hasChanges = true;
+                }
+            }
+
+            if (dto.IsEmailVerified.HasValue && dto.IsEmailVerified.Value != user.IsEmailVerified)
+            {
+                user.IsEmailVerified = dto.IsEmailVerified.Value;
+                hasChanges = true;
+            }
+
+            if (dto.ProvinceId.HasValue && dto.ProvinceId.Value != user.ProvinceId)
+            {
+                user.ProvinceId = dto.ProvinceId.Value > 0 ? dto.ProvinceId.Value : null;
+                hasChanges = true;
+            }
+
+            if (dto.DistrictId.HasValue && dto.DistrictId.Value != user.DistrictId)
+            {
+                user.DistrictId = dto.DistrictId.Value > 0 ? dto.DistrictId.Value : null;
+                hasChanges = true;
+            }
+
+            if (dto.WardId.HasValue && dto.WardId.Value != user.WardId)
+            {
+                user.WardId = dto.WardId.Value > 0 ? dto.WardId.Value : null;
+                hasChanges = true;
+            }
+
+            if (dto.AddressDetail != null)
+            {
+                var normalizedAddressDetail = string.IsNullOrWhiteSpace(dto.AddressDetail) ? null : dto.AddressDetail.Trim();
+                if (normalizedAddressDetail != user.AddressDetail)
+                {
+                    user.AddressDetail = normalizedAddressDetail;
+                    hasChanges = true;
+                }
+            }
+
+            if (hasChanges)
+            {
+                user.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
+            // Reload để lấy dữ liệu mới nhất (bao gồm Enterprise nếu có)
+            user = await _context.Users
+                .Include(u => u.Enterprise)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (user == null)
+                return NotFound();
+
+            return Ok(MapUserToDto(user));
         }
 
         // 🔹 DELETE: api/users/{id} - Chỉ SystemAdmin
