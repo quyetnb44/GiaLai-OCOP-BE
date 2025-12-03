@@ -22,14 +22,16 @@ namespace GiaLaiOCOP.Api.Controllers
         private readonly IConfiguration _config;
         private readonly IEmailService _emailService;
         private readonly ILogger<AuthController> _logger;
+        private readonly ISocialAuthService _socialAuthService;
         private readonly PasswordHasher<User> _passwordHasher = new();
 
-        public AuthController(AppDbContext context, IConfiguration config, IEmailService emailService, ILogger<AuthController> logger)
+        public AuthController(AppDbContext context, IConfiguration config, IEmailService emailService, ILogger<AuthController> logger, ISocialAuthService socialAuthService)
         {
             _context = context;
             _config = config;
             _emailService = emailService;
             _logger = logger;
+            _socialAuthService = socialAuthService;
         }
 
         // 🔹 Helper: Tạo mã OTP 6 chữ số
@@ -824,6 +826,234 @@ namespace GiaLaiOCOP.Api.Controllers
                 message = "Xác thực email thành công. Bạn có thể đăng nhập ngay bây giờ.",
                 isEmailVerified = true
             });
+        }
+
+        // 🔹 Helper: Map User to UserDto
+        private static UserDto MapUserToDto(User user)
+        {
+            return new UserDto
+            {
+                Id = user.Id,
+                Name = user.Name,
+                Email = user.Email,
+                Role = user.Role,
+                EnterpriseId = user.EnterpriseId,
+                Enterprise = user.Enterprise == null ? null : new EnterpriseDto
+                {
+                    Id = user.Enterprise.Id,
+                    Name = user.Enterprise.Name,
+                    Description = user.Enterprise.Description
+                },
+                IsEmailVerified = user.IsEmailVerified,
+                IsActive = user.IsActive,
+                PhoneNumber = user.PhoneNumber,
+                Gender = user.Gender,
+                DateOfBirth = user.DateOfBirth,
+                ShippingAddress = user.ShippingAddress,
+                AvatarUrl = user.AvatarUrl,
+                CreatedAt = user.CreatedAt,
+                UpdatedAt = user.UpdatedAt,
+                ProvinceId = user.ProvinceId,
+                DistrictId = user.DistrictId,
+                WardId = user.WardId,
+                AddressDetail = user.AddressDetail
+            };
+        }
+
+        // 🔹 POST /api/auth/google - Đăng nhập/Đăng ký bằng Google
+        [HttpPost("google")]
+        public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                // Xác thực Google id_token
+                var socialUserInfo = await _socialAuthService.VerifyGoogleTokenAsync(dto.IdToken);
+                
+                if (socialUserInfo == null)
+                    return Unauthorized("Google token không hợp lệ hoặc đã hết hạn.");
+
+                // Tìm user theo GoogleId hoặc Email
+                var user = await _context.Users
+                    .Include(u => u.Enterprise)
+                    .FirstOrDefaultAsync(u => 
+                        (!string.IsNullOrEmpty(u.GoogleId) && u.GoogleId == socialUserInfo.ProviderId) ||
+                        u.Email.ToLower() == socialUserInfo.Email.ToLower()
+                    );
+
+                if (user != null)
+                {
+                    // User đã tồn tại - cập nhật thông tin nếu cần
+                    if (string.IsNullOrEmpty(user.GoogleId))
+                    {
+                        user.GoogleId = socialUserInfo.ProviderId;
+                    }
+
+                    // Cập nhật avatar nếu có và chưa có
+                    if (string.IsNullOrEmpty(user.AvatarUrl) && !string.IsNullOrEmpty(socialUserInfo.PictureUrl))
+                    {
+                        user.AvatarUrl = socialUserInfo.PictureUrl;
+                    }
+
+                    // Cập nhật tên nếu thay đổi
+                    if (string.IsNullOrEmpty(user.Name) || user.Name != socialUserInfo.Name)
+                    {
+                        user.Name = socialUserInfo.Name;
+                    }
+
+                    // Đánh dấu email đã verified (vì Google đã xác thực)
+                    user.IsEmailVerified = true;
+                    user.UpdatedAt = DateTime.UtcNow;
+
+                    await _context.SaveChangesAsync();
+                }
+                else
+                {
+                    // Tạo user mới
+                    user = new User
+                    {
+                        Name = socialUserInfo.Name,
+                        Email = socialUserInfo.Email.ToLower(),
+                        Password = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()), // Random password vì không cần
+                        Role = "Customer",
+                        GoogleId = socialUserInfo.ProviderId,
+                        AvatarUrl = socialUserInfo.PictureUrl,
+                        IsEmailVerified = true, // Google đã xác thực email
+                        IsActive = true
+                    };
+
+                    _context.Users.Add(user);
+                    await _context.SaveChangesAsync();
+
+                    // Load Enterprise nếu có
+                    if (user.EnterpriseId.HasValue)
+                    {
+                        await _context.Entry(user)
+                            .Reference(u => u.Enterprise)
+                            .LoadAsync();
+                    }
+                }
+
+                // Kiểm tra tài khoản có bị vô hiệu hóa không
+                if (!user.IsActive)
+                    return Unauthorized("Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.");
+
+                // Tạo JWT token
+                var (token, expires) = GenerateJwtToken(user);
+
+                return Ok(new AuthResponseDto
+                {
+                    Token = token,
+                    Expires = expires,
+                    User = MapUserToDto(user),
+                    Message = "Đăng nhập bằng Google thành công."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during Google login");
+                return StatusCode(500, new { message = "Đã xảy ra lỗi khi xử lý đăng nhập Google. Vui lòng thử lại sau." });
+            }
+        }
+
+        // 🔹 POST /api/auth/facebook - Đăng nhập/Đăng ký bằng Facebook
+        [HttpPost("facebook")]
+        public async Task<IActionResult> FacebookLogin([FromBody] FacebookLoginDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            try
+            {
+                // Xác thực Facebook access_token
+                var socialUserInfo = await _socialAuthService.VerifyFacebookTokenAsync(dto.AccessToken);
+                
+                if (socialUserInfo == null)
+                    return Unauthorized("Facebook token không hợp lệ hoặc đã hết hạn.");
+
+                // Tìm user theo FacebookId hoặc Email
+                var user = await _context.Users
+                    .Include(u => u.Enterprise)
+                    .FirstOrDefaultAsync(u => 
+                        (!string.IsNullOrEmpty(u.FacebookId) && u.FacebookId == socialUserInfo.ProviderId) ||
+                        u.Email.ToLower() == socialUserInfo.Email.ToLower()
+                    );
+
+                if (user != null)
+                {
+                    // User đã tồn tại - cập nhật thông tin nếu cần
+                    if (string.IsNullOrEmpty(user.FacebookId))
+                    {
+                        user.FacebookId = socialUserInfo.ProviderId;
+                    }
+
+                    // Cập nhật avatar nếu có và chưa có
+                    if (string.IsNullOrEmpty(user.AvatarUrl) && !string.IsNullOrEmpty(socialUserInfo.PictureUrl))
+                    {
+                        user.AvatarUrl = socialUserInfo.PictureUrl;
+                    }
+
+                    // Cập nhật tên nếu thay đổi
+                    if (string.IsNullOrEmpty(user.Name) || user.Name != socialUserInfo.Name)
+                    {
+                        user.Name = socialUserInfo.Name;
+                    }
+
+                    // Đánh dấu email đã verified (vì Facebook đã xác thực)
+                    user.IsEmailVerified = true;
+                    user.UpdatedAt = DateTime.UtcNow;
+
+                    await _context.SaveChangesAsync();
+                }
+                else
+                {
+                    // Tạo user mới
+                    user = new User
+                    {
+                        Name = socialUserInfo.Name,
+                        Email = socialUserInfo.Email.ToLower(),
+                        Password = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()), // Random password vì không cần
+                        Role = "Customer",
+                        FacebookId = socialUserInfo.ProviderId,
+                        AvatarUrl = socialUserInfo.PictureUrl,
+                        IsEmailVerified = true, // Facebook đã xác thực email
+                        IsActive = true
+                    };
+
+                    _context.Users.Add(user);
+                    await _context.SaveChangesAsync();
+
+                    // Load Enterprise nếu có
+                    if (user.EnterpriseId.HasValue)
+                    {
+                        await _context.Entry(user)
+                            .Reference(u => u.Enterprise)
+                            .LoadAsync();
+                    }
+                }
+
+                // Kiểm tra tài khoản có bị vô hiệu hóa không
+                if (!user.IsActive)
+                    return Unauthorized("Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.");
+
+                // Tạo JWT token
+                var (token, expires) = GenerateJwtToken(user);
+
+                return Ok(new AuthResponseDto
+                {
+                    Token = token,
+                    Expires = expires,
+                    User = MapUserToDto(user),
+                    Message = "Đăng nhập bằng Facebook thành công."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during Facebook login");
+                return StatusCode(500, new { message = "Đã xảy ra lỗi khi xử lý đăng nhập Facebook. Vui lòng thử lại sau." });
+            }
         }
     }
 }

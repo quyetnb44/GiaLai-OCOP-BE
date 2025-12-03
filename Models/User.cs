@@ -43,6 +43,10 @@ namespace GiaLaiOCOP.Api.Models
         // 🔒 Trạng thái tài khoản (để SystemAdmin vô hiệu hóa/kích hoạt)
         public bool IsActive { get; set; } = true;
 
+        // 🔹 Social Login IDs
+        public string? GoogleId { get; set; } // Google User ID
+        public string? FacebookId { get; set; } // Facebook User ID
+
         // Quan hệ: 1 user có thể có nhiều đơn hàng
         [JsonIgnore] // 🔥 Ngăn vòng lặp khi serialize JSON
         public ICollection<Order> Orders { get; set; } = new List<Order>();
