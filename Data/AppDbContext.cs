@@ -30,6 +30,7 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<InventoryHistory> InventoryHistories { get; set; }
         public DbSet<EnterpriseSettings> EnterpriseSettings { get; set; }
+        public DbSet<EnterpriseBankInfo> EnterpriseBankInfos { get; set; }
 
 
 
@@ -223,6 +224,18 @@ namespace GiaLaiOCOP.Api.Data
                 .WithMany()
                 .HasForeignKey(n => n.OrderId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // 🟩 Cấu hình quan hệ Enterprise - EnterpriseBankInfo (1-1)
+            modelBuilder.Entity<EnterpriseBankInfo>()
+                .HasOne(ebi => ebi.Enterprise)
+                .WithMany()
+                .HasForeignKey(ebi => ebi.EnterpriseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🟩 Đảm bảo mỗi Enterprise chỉ có một EnterpriseBankInfo
+            modelBuilder.Entity<EnterpriseBankInfo>()
+                .HasIndex(ebi => ebi.EnterpriseId)
+                .IsUnique();
         }
     }
 }

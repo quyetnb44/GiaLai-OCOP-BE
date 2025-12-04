@@ -3,6 +3,7 @@ using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Dtos;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Options;
+using GiaLaiOCOP.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,11 +20,19 @@ namespace GiaLaiOCOP.Api.Controllers
     {
         private readonly AppDbContext _context;
         private readonly IOptions<BankTransferSettings> _bankOptions;
+        private readonly IVietQrService _vietQrService;
+        private readonly ILogger<PaymentsController> _logger;
 
-        public PaymentsController(AppDbContext context, IOptions<BankTransferSettings> bankOptions)
+        public PaymentsController(
+            AppDbContext context, 
+            IOptions<BankTransferSettings> bankOptions,
+            IVietQrService vietQrService,
+            ILogger<PaymentsController> logger)
         {
             _context = context;
             _bankOptions = bankOptions;
+            _vietQrService = vietQrService;
+            _logger = logger;
         }
 
         // 🔹 Helper: Lấy userId từ token
@@ -147,7 +156,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 // Tạo payment cho enterprise này
                 try
                 {
-                    var payment = CreatePaymentForEnterprise(order, enterprise, amount, method);
+                    var payment = await CreatePaymentForEnterpriseAsync(order, enterprise, amount, method);
                     createdPayments.Add(payment);
                 }
                 catch (InvalidOperationException ex)
@@ -216,6 +225,104 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Forbid("Bạn không có quyền xem thanh toán này.");
 
             return Ok(MapPaymentToDto(payment));
+        }
+
+        // 🔹 GET: api/payments/{id}/qr-code - Lấy QR code thanh toán với amount và description
+        [HttpGet("{id}/qr-code")]
+        [ProducesResponseType(typeof(PaymentQrCodeDto), 200)]
+        [ProducesResponseType(401)]
+        [ProducesResponseType(403)]
+        [ProducesResponseType(404)]
+        public async Task<ActionResult<PaymentQrCodeDto>> GetPaymentQrCode(int id)
+        {
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var payment = await _context.Payments
+                .Include(p => p.Order)
+                .Include(p => p.Enterprise)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (payment == null)
+                return NotFound("Không tìm thấy thanh toán.");
+
+            if (!CanAccessPayment(payment, userId.Value))
+                return Forbid("Bạn không có quyền xem QR code thanh toán này.");
+
+            if (payment.Method != "BankTransfer")
+                return BadRequest("Chỉ có thể lấy QR code cho thanh toán chuyển khoản.");
+
+            // Lấy thông tin ngân hàng từ EnterpriseBankInfo
+            var bankInfo = await _context.EnterpriseBankInfos
+                .FirstOrDefaultAsync(ebi => ebi.EnterpriseId == payment.EnterpriseId);
+
+            if (bankInfo == null)
+            {
+                // Fallback: Sử dụng thông tin từ Payment hoặc Enterprise (tương thích với code cũ)
+                if (string.IsNullOrWhiteSpace(payment.BankCode) || 
+                    string.IsNullOrWhiteSpace(payment.BankAccount) || 
+                    string.IsNullOrWhiteSpace(payment.AccountName))
+                {
+                    return NotFound("Enterprise chưa cấu hình thông tin ngân hàng.");
+                }
+
+                // Tạo QR code từ thông tin Payment (fallback)
+                try
+                {
+                    var description = $"Thanh toan don hang #{payment.OrderId}";
+                    var qrCodeBase64 = _vietQrService.GeneratePaymentQrCodeBase64(
+                        payment.BankCode!,
+                        payment.BankAccount!,
+                        payment.AccountName!,
+                        payment.Amount,
+                        description
+                    );
+
+                    return Ok(new PaymentQrCodeDto
+                    {
+                        QrCodeBase64 = qrCodeBase64,
+                        Description = description,
+                        Amount = payment.Amount,
+                        EnterpriseBankName = payment.Enterprise?.Name ?? "Unknown",
+                        EnterpriseAccountNumber = payment.BankAccount!,
+                        AccountName = payment.AccountName!
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error generating payment QR code for Payment {PaymentId}", id);
+                    return StatusCode(500, new { message = "Lỗi khi tạo QR code. Vui lòng thử lại." });
+                }
+            }
+
+            // Tạo QR code từ EnterpriseBankInfo
+            try
+            {
+                var description = $"Thanh toan don hang #{payment.OrderId}";
+                var qrCodeBase64 = _vietQrService.GeneratePaymentQrCodeBase64(
+                    bankInfo.BankCode,
+                    bankInfo.BankAccount,
+                    bankInfo.AccountName,
+                    payment.Amount,
+                    description
+                );
+
+                return Ok(new PaymentQrCodeDto
+                {
+                    QrCodeBase64 = qrCodeBase64,
+                    Description = description,
+                    Amount = payment.Amount,
+                    EnterpriseBankName = bankInfo.BankName,
+                    EnterpriseAccountNumber = bankInfo.BankAccount,
+                    AccountName = bankInfo.AccountName
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating payment QR code for Payment {PaymentId}", id);
+                return StatusCode(500, new { message = "Lỗi khi tạo QR code. Vui lòng thử lại." });
+            }
         }
 
         // 🔹 GET: api/payments/order/{orderId}
@@ -338,7 +445,7 @@ namespace GiaLaiOCOP.Api.Controllers
             return NoContent();
         }
 
-        private Payment CreatePaymentForEnterprise(Order order, Enterprise enterprise, decimal amount, string method)
+        private async Task<Payment> CreatePaymentForEnterpriseAsync(Order order, Enterprise enterprise, decimal amount, string method)
         {
             var reference = GenerateReference(order.Id, enterprise.Id, method);
             string? qrUrl = null;
@@ -348,8 +455,18 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (method == "BankTransfer")
             {
-                // Ưu tiên sử dụng thông tin từ Enterprise, nếu không có thì dùng global settings
-                if (!string.IsNullOrWhiteSpace(enterprise.BankCode) &&
+                // Ưu tiên 1: Sử dụng EnterpriseBankInfo (mới)
+                var bankInfo = await _context.EnterpriseBankInfos
+                    .FirstOrDefaultAsync(ebi => ebi.EnterpriseId == enterprise.Id);
+
+                if (bankInfo != null)
+                {
+                    bankCode = bankInfo.BankCode;
+                    bankAccount = bankInfo.BankAccount;
+                    accountName = bankInfo.AccountName;
+                }
+                // Ưu tiên 2: Sử dụng thông tin từ Enterprise (cũ - tương thích)
+                else if (!string.IsNullOrWhiteSpace(enterprise.BankCode) &&
                     !string.IsNullOrWhiteSpace(enterprise.BankAccount) &&
                     !string.IsNullOrWhiteSpace(enterprise.BankAccountName))
                 {
@@ -357,6 +474,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     bankAccount = enterprise.BankAccount;
                     accountName = enterprise.BankAccountName;
                 }
+                // Ưu tiên 3: Dùng global settings
                 else
                 {
                     var settings = _bankOptions.Value;
@@ -372,7 +490,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     accountName = settings.AccountName;
                 }
 
-                // Tạo QR code URL với thông tin của enterprise
+                // Tạo QR code URL với thông tin của enterprise (tương thích với code cũ)
                 var enterpriseSettings = new BankTransferSettings
                 {
                     BankCode = bankCode,

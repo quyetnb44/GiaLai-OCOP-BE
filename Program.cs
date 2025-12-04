@@ -113,6 +113,9 @@ builder.Services.AddScoped<GiaLaiOCOP.Api.Services.IRatingService, GiaLaiOCOP.Ap
 // 🔹 Add GPS Address Service
 builder.Services.AddScoped<IGpsAddressService, GpsAddressService>();
 
+// 🔹 Add VietQR Service
+builder.Services.AddScoped<IVietQrService, VietQrService>();
+
 // 🔹 Add Social Auth Service (Google, Facebook)
 builder.Services.AddHttpClient<ISocialAuthService, SocialAuthService>();
 
