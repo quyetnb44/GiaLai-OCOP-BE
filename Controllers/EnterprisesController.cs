@@ -293,7 +293,7 @@ namespace GiaLaiOCOP.Api.Controllers
             var enterprise = user.Enterprise;
 
             // 🔹 Cập nhật các trường được phép (không bao gồm OCOPRating)
-            enterprise.Name = dto.Name;
+            enterprise.Name = dto.Name ?? string.Empty;
             if (dto.Description != null)
                 enterprise.Description = dto.Description;
             if (dto.Address != null)
@@ -419,7 +419,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.Description != null)
             {
-                var normalizedDescription = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
+                var normalizedDescription = string.IsNullOrWhiteSpace(dto.Description) ? string.Empty : dto.Description.Trim();
                 if (normalizedDescription != enterprise.Description)
                 {
                     enterprise.Description = normalizedDescription;
@@ -429,7 +429,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.Address != null)
             {
-                var normalizedAddress = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim();
+                var normalizedAddress = string.IsNullOrWhiteSpace(dto.Address) ? string.Empty : dto.Address.Trim();
                 if (normalizedAddress != enterprise.Address)
                 {
                     enterprise.Address = normalizedAddress;
@@ -439,7 +439,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.Ward != null)
             {
-                var normalizedWard = string.IsNullOrWhiteSpace(dto.Ward) ? null : dto.Ward.Trim();
+                var normalizedWard = string.IsNullOrWhiteSpace(dto.Ward) ? string.Empty : dto.Ward.Trim();
                 if (normalizedWard != enterprise.Ward)
                 {
                     enterprise.Ward = normalizedWard;
@@ -449,7 +449,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.District != null)
             {
-                var normalizedDistrict = string.IsNullOrWhiteSpace(dto.District) ? null : dto.District.Trim();
+                var normalizedDistrict = string.IsNullOrWhiteSpace(dto.District) ? string.Empty : dto.District.Trim();
                 if (normalizedDistrict != enterprise.District)
                 {
                     enterprise.District = normalizedDistrict;
@@ -459,7 +459,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.Province != null)
             {
-                var normalizedProvince = string.IsNullOrWhiteSpace(dto.Province) ? null : dto.Province.Trim();
+                var normalizedProvince = string.IsNullOrWhiteSpace(dto.Province) ? string.Empty : dto.Province.Trim();
                 if (normalizedProvince != enterprise.Province)
                 {
                     enterprise.Province = normalizedProvince;
@@ -481,7 +481,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.PhoneNumber != null)
             {
-                var normalizedPhone = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+                var normalizedPhone = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? string.Empty : dto.PhoneNumber.Trim();
                 if (normalizedPhone != enterprise.PhoneNumber)
                 {
                     enterprise.PhoneNumber = normalizedPhone;
@@ -491,7 +491,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.EmailContact != null)
             {
-                var normalizedEmail = string.IsNullOrWhiteSpace(dto.EmailContact) ? null : dto.EmailContact.Trim().ToLower();
+                var normalizedEmail = string.IsNullOrWhiteSpace(dto.EmailContact) ? string.Empty : dto.EmailContact.Trim().ToLower();
                 if (normalizedEmail != enterprise.EmailContact)
                 {
                     enterprise.EmailContact = normalizedEmail;
@@ -501,7 +501,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.Website != null)
             {
-                var normalizedWebsite = string.IsNullOrWhiteSpace(dto.Website) ? null : dto.Website.Trim();
+                var normalizedWebsite = string.IsNullOrWhiteSpace(dto.Website) ? string.Empty : dto.Website.Trim();
                 if (normalizedWebsite != enterprise.Website)
                 {
                     enterprise.Website = normalizedWebsite;
@@ -511,7 +511,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.BusinessField != null)
             {
-                var normalizedField = string.IsNullOrWhiteSpace(dto.BusinessField) ? null : dto.BusinessField.Trim();
+                var normalizedField = string.IsNullOrWhiteSpace(dto.BusinessField) ? string.Empty : dto.BusinessField.Trim();
                 if (normalizedField != enterprise.BusinessField)
                 {
                     enterprise.BusinessField = normalizedField;
@@ -537,7 +537,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (dto.ApprovalStatus != null)
             {
-                var normalizedStatus = string.IsNullOrWhiteSpace(dto.ApprovalStatus) ? null : dto.ApprovalStatus.Trim();
+                var normalizedStatus = string.IsNullOrWhiteSpace(dto.ApprovalStatus) ? string.Empty : dto.ApprovalStatus.Trim();
                 if (normalizedStatus != enterprise.ApprovalStatus)
                 {
                     enterprise.ApprovalStatus = normalizedStatus;

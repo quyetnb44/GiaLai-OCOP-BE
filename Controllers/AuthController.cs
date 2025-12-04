@@ -1055,5 +1055,178 @@ namespace GiaLaiOCOP.Api.Controllers
                 return StatusCode(500, new { message = "Đã xảy ra lỗi khi xử lý đăng nhập Facebook. Vui lòng thử lại sau." });
             }
         }
+
+        // 🔹 POST /api/auth/forgot-password - Gửi OTP để đặt lại mật khẩu
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLower();
+
+            // Kiểm tra email có tồn tại trong hệ thống không
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+            if (user == null)
+            {
+                // Không tiết lộ email có tồn tại hay không (security best practice)
+                _logger.LogWarning($"ForgotPassword - Email not found: {email}");
+                return Ok(new { message = "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi mã OTP đến email của bạn." });
+            }
+
+            // Kiểm tra tài khoản có bị vô hiệu hóa không
+            if (!user.IsActive)
+            {
+                _logger.LogWarning($"ForgotPassword - Account is inactive: {email}");
+                return BadRequest("Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.");
+            }
+
+            // Kiểm tra rate limiting: không cho gửi quá nhiều OTP trong 1 phút
+            var recentOtp = await _context.EmailVerifications
+                .Where(e => e.Email == email && 
+                           e.Purpose == "ResetPassword" && 
+                           e.CreatedAt > DateTime.UtcNow.AddMinutes(-1))
+                .FirstOrDefaultAsync();
+
+            if (recentOtp != null)
+                return BadRequest("Vui lòng đợi 1 phút trước khi yêu cầu mã OTP mới.");
+
+            // Xóa OTP cũ
+            await CleanupOldOtpsAsync(email, "ResetPassword");
+
+            // Tạo mã OTP mới
+            var otpCode = GenerateOtp();
+            var emailVerification = new EmailVerification
+            {
+                Email = email,
+                OtpCode = otpCode,
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(10), // OTP có hiệu lực 10 phút
+                IsUsed = false,
+                Purpose = "ResetPassword"
+            };
+
+            _context.EmailVerifications.Add(emailVerification);
+            await _context.SaveChangesAsync();
+
+            // Gửi email
+            var emailSent = await _emailService.SendOtpEmailAsync(email, otpCode, "ResetPassword");
+            
+            if (!emailSent)
+            {
+                _logger.LogWarning($"⚠️ Failed to send reset password OTP email to {email}, but OTP was saved: {otpCode}");
+                
+                // Trong môi trường development, trả về OTP trong response để test
+                var isDevelopment = _config["ASPNETCORE_ENVIRONMENT"] == "Development" || 
+                                   _config["Environment"] == "Development";
+                
+                if (isDevelopment)
+                {
+                    return Ok(new { 
+                        message = "⚠️ Không thể gửi email. (Development mode - OTP: " + otpCode + ")",
+                        warning = "Email service chưa được cấu hình. Vui lòng cấu hình Email settings trong appsettings.json",
+                        otpCode = otpCode // Chỉ trả về trong development khi email fail
+                    });
+                }
+                
+                // Production: không trả về OTP, chỉ thông báo lỗi
+                return StatusCode(500, new { 
+                    message = "Không thể gửi email. Vui lòng thử lại sau.",
+                    error = "Email service configuration error"
+                });
+            }
+
+            // Email gửi thành công
+            _logger.LogInformation($"✅ Reset password OTP email sent successfully to {email}");
+            return Ok(new { message = "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi mã OTP đến email của bạn. Vui lòng kiểm tra hộp thư." });
+        }
+
+        // 🔹 POST /api/auth/reset-password - Đặt lại mật khẩu bằng OTP
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLower();
+            var otpCode = dto.OtpCode.Trim();
+
+            // Tìm user
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+            if (user == null)
+            {
+                // Không tiết lộ email có tồn tại hay không
+                return BadRequest("Mã OTP không hợp lệ hoặc đã hết hạn.");
+            }
+
+            // Kiểm tra tài khoản có bị vô hiệu hóa không
+            if (!user.IsActive)
+            {
+                return BadRequest("Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên.");
+            }
+
+            // Xác thực OTP
+            var emailVerification = await _context.EmailVerifications
+                .Where(e => e.Email == email && 
+                           e.OtpCode == otpCode && 
+                           e.Purpose == "ResetPassword" &&
+                           !e.IsUsed &&
+                           e.ExpiresAt > DateTime.UtcNow)
+                .OrderByDescending(e => e.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (emailVerification == null)
+            {
+                _logger.LogWarning($"ResetPassword - Invalid OTP for email: {email}");
+                return BadRequest("Mã OTP không hợp lệ hoặc đã hết hạn.");
+            }
+
+            // Validate mật khẩu mới
+            if (string.IsNullOrWhiteSpace(dto.NewPassword))
+            {
+                return BadRequest(new { message = "Mật khẩu mới không được để trống" });
+            }
+
+            if (dto.NewPassword.Length < 6 || dto.NewPassword.Length > 100)
+            {
+                return BadRequest(new { message = "Mật khẩu mới phải có từ 6 đến 100 ký tự" });
+            }
+
+            // Kiểm tra format: phải có chữ hoa, chữ thường và số
+            if (!System.Text.RegularExpressions.Regex.IsMatch(dto.NewPassword, @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$"))
+            {
+                return BadRequest(new { message = "Mật khẩu mới phải chứa ít nhất một chữ hoa, một chữ thường và một số" });
+            }
+
+            // Kiểm tra mật khẩu xác nhận khớp
+            if (dto.NewPassword != dto.ConfirmNewPassword)
+            {
+                return BadRequest(new { message = "Mật khẩu xác nhận không khớp với mật khẩu mới" });
+            }
+
+            // Kiểm tra mật khẩu mới phải khác mật khẩu hiện tại
+            if (VerifyPassword(user, dto.NewPassword))
+            {
+                return BadRequest(new { message = "Mật khẩu mới phải khác mật khẩu hiện tại" });
+            }
+
+            // Hash mật khẩu mới
+            user.Password = _passwordHasher.HashPassword(user, dto.NewPassword);
+            user.PasswordUpdatedAt = DateTime.UtcNow;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            // Đánh dấu OTP đã sử dụng
+            emailVerification.IsUsed = true;
+
+            // Lưu vào database
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation($"✅ Password reset successfully for user: {email}");
+
+            return Ok(new { 
+                message = "Đặt lại mật khẩu thành công. Bạn có thể đăng nhập với mật khẩu mới.",
+                success = true
+            });
+        }
     }
 }
