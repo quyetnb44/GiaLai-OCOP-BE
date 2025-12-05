@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace GiaLaiOCOP.Api.Models
 {
     public class EmailVerification
@@ -9,6 +11,11 @@ namespace GiaLaiOCOP.Api.Models
         public DateTime ExpiresAt { get; set; }
         public bool IsUsed { get; set; } = false;
         public string? Purpose { get; set; } // "Register", "Login", "ResetPassword"
+        
+        // 🔹 Foreign key tùy chọn với User (nullable vì OTP có thể gửi cho email chưa đăng ký)
+        public int? UserId { get; set; }
+        [JsonIgnore]
+        public User? User { get; set; }
     }
 }
 

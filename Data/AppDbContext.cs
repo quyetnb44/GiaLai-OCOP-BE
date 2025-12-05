@@ -236,6 +236,14 @@ namespace GiaLaiOCOP.Api.Data
             modelBuilder.Entity<EnterpriseBankInfo>()
                 .HasIndex(ebi => ebi.EnterpriseId)
                 .IsUnique();
+
+            // 🟩 Cấu hình quan hệ EmailVerification - User (n-1, optional)
+            // Nullable vì OTP có thể được gửi cho email chưa đăng ký (đăng ký mới)
+            modelBuilder.Entity<EmailVerification>()
+                .HasOne(ev => ev.User)
+                .WithMany()
+                .HasForeignKey(ev => ev.UserId)
+                .OnDelete(DeleteBehavior.SetNull); // Set null khi user bị xóa (không xóa OTP)
         }
     }
 }

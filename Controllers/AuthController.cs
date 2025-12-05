@@ -517,6 +517,10 @@ namespace GiaLaiOCOP.Api.Controllers
             // Xóa OTP cũ
             await CleanupOldOtpsAsync(email, purpose);
 
+            // Tìm user nếu đã tồn tại (để set UserId)
+            var existingUser = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+
             // Tạo mã OTP mới
             var otpCode = GenerateOtp();
             var emailVerification = new EmailVerification
@@ -526,7 +530,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(10), // OTP có hiệu lực 10 phút
                 IsUsed = false,
-                Purpose = purpose
+                Purpose = purpose,
+                UserId = existingUser?.Id // Set UserId nếu user đã tồn tại
             };
 
             _context.EmailVerifications.Add(emailVerification);
@@ -753,7 +758,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                 IsUsed = false,
-                Purpose = "Register"
+                Purpose = "Register",
+                UserId = user.Id // User đã tồn tại trong trường hợp này
             };
 
             _context.EmailVerifications.Add(emailVerification);
@@ -1103,7 +1109,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(10), // OTP có hiệu lực 10 phút
                 IsUsed = false,
-                Purpose = "ResetPassword"
+                Purpose = "ResetPassword",
+                UserId = user.Id // User đã tồn tại trong trường hợp này
             };
 
             _context.EmailVerifications.Add(emailVerification);
