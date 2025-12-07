@@ -871,15 +871,31 @@ namespace GiaLaiOCOP.Api.Controllers
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
             if (!ModelState.IsValid)
+            {
+                _logger.LogWarning("Google login - Invalid model state: {ModelState}", ModelState);
                 return BadRequest(ModelState);
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.IdToken))
+            {
+                _logger.LogWarning("Google login - IdToken is null or empty");
+                return BadRequest(new { message = "Google token không được để trống." });
+            }
 
             try
             {
+                _logger.LogInformation("Google login - Verifying token...");
+                
                 // Xác thực Google id_token
                 var socialUserInfo = await _socialAuthService.VerifyGoogleTokenAsync(dto.IdToken);
                 
                 if (socialUserInfo == null)
-                    return Unauthorized("Google token không hợp lệ hoặc đã hết hạn.");
+                {
+                    _logger.LogWarning("Google login - Token verification failed");
+                    return Unauthorized(new { message = "Google token không hợp lệ hoặc đã hết hạn. Vui lòng thử lại." });
+                }
+
+                _logger.LogInformation($"Google login - Token verified for user: {socialUserInfo.Email}");
 
                 // Tìm user theo GoogleId hoặc Email
                 var user = await _context.Users
@@ -969,15 +985,31 @@ namespace GiaLaiOCOP.Api.Controllers
         public async Task<IActionResult> FacebookLogin([FromBody] FacebookLoginDto dto)
         {
             if (!ModelState.IsValid)
+            {
+                _logger.LogWarning("Facebook login - Invalid model state: {ModelState}", ModelState);
                 return BadRequest(ModelState);
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.AccessToken))
+            {
+                _logger.LogWarning("Facebook login - AccessToken is null or empty");
+                return BadRequest(new { message = "Facebook token không được để trống." });
+            }
 
             try
             {
+                _logger.LogInformation("Facebook login - Verifying token...");
+                
                 // Xác thực Facebook access_token
                 var socialUserInfo = await _socialAuthService.VerifyFacebookTokenAsync(dto.AccessToken);
                 
                 if (socialUserInfo == null)
-                    return Unauthorized("Facebook token không hợp lệ hoặc đã hết hạn.");
+                {
+                    _logger.LogWarning("Facebook login - Token verification failed");
+                    return Unauthorized(new { message = "Facebook token không hợp lệ hoặc đã hết hạn. Vui lòng thử lại." });
+                }
+
+                _logger.LogInformation($"Facebook login - Token verified for user: {socialUserInfo.Email}");
 
                 // Tìm user theo FacebookId hoặc Email
                 var user = await _context.Users
