@@ -1,4 +1,4 @@
-# 🚀 Hướng Dẫn Deploy Social Login (Google & Facebook)
+    # 🚀 Hướng Dẫn Deploy Social Login (Google & Facebook)
 
 Tài liệu này hướng dẫn các bước cần thiết để đảm bảo chức năng đăng nhập Google và Facebook hoạt động đúng khi deploy lên production.
 
@@ -108,10 +108,10 @@ Thay vì lưu secrets trong `appsettings.json`, sử dụng environment variable
 1. Vào **Environment** tab trong service settings
 2. Thêm các variables:
    ```
-   Google__ClientId=873979098760-9cbdcjnrspc4o0sfekq809c0iiqujtu7.apps.googleusercontent.com
-   Google__ClientSecret=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
-   Facebook__AppId=842051432020279
-   Facebook__AppSecret=19ab64f4f84998a78db86db1a2fbc2e8
+   Google__ClientId=YOUR_GOOGLE_CLIENT_ID
+   Google__ClientSecret=YOUR_GOOGLE_CLIENT_SECRET
+   Facebook__AppId=YOUR_FACEBOOK_APP_ID
+   Facebook__AppSecret=YOUR_FACEBOOK_APP_SECRET
    Cors__AllowedOrigins__0=https://your-frontend-domain.com
    ```
 
@@ -121,10 +121,10 @@ Thay vì lưu secrets trong `appsettings.json`, sử dụng environment variable
 
 #### Trên AWS (EC2/ECS):
 ```bash
-export Google__ClientId="873979098760-9cbdcjnrspc4o0sfekq809c0iiqujtu7.apps.googleusercontent.com"
-export Google__ClientSecret="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"
-export Facebook__AppId="842051432020279"
-export Facebook__AppSecret="19ab64f4f84998a78db86db1a2fbc2e8"
+export Google__ClientId="YOUR_GOOGLE_CLIENT_ID"
+export Google__ClientSecret="YOUR_GOOGLE_CLIENT_SECRET"
+export Facebook__AppId="YOUR_FACEBOOK_APP_ID"
+export Facebook__AppSecret="YOUR_FACEBOOK_APP_SECRET"
 ```
 
 ### 2. Cập Nhật appsettings.json cho Production
@@ -134,12 +134,12 @@ Nếu không dùng environment variables, tạo file `appsettings.Production.jso
 ```json
 {
   "Google": {
-    "ClientId": "873979098760-9cbdcjnrspc4o0sfekq809c0iiqujtu7.apps.googleusercontent.com",
-    "ClientSecret": "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"
+    "ClientId": "YOUR_GOOGLE_CLIENT_ID",
+    "ClientSecret": "YOUR_GOOGLE_CLIENT_SECRET"
   },
   "Facebook": {
-    "AppId": "842051432020279",
-    "AppSecret": "19ab64f4f84998a78db86db1a2fbc2e8"
+    "AppId": "YOUR_FACEBOOK_APP_ID",
+    "AppSecret": "YOUR_FACEBOOK_APP_SECRET"
   },
   "Cors": {
     "AllowedOrigins": [
