@@ -1039,14 +1039,20 @@ namespace GiaLaiOCOP.Api.Controllers
                         user.Name = socialUserInfo.Name;
                     }
 
-                    // Đánh dấu email đã verified (vì Facebook đã xác thực)
-                    user.IsEmailVerified = true;
+                    // Đánh dấu email đã verified nếu có email thật (không phải email tạm)
+                    if (!socialUserInfo.Email.StartsWith("fb_") || !socialUserInfo.Email.EndsWith("@facebook.temp"))
+                    {
+                        user.IsEmailVerified = true;
+                    }
                     user.UpdatedAt = DateTime.UtcNow;
 
                     await _context.SaveChangesAsync();
                 }
                 else
                 {
+                    // Kiểm tra xem email có phải là email tạm không (khi Facebook không cung cấp email)
+                    var isTemporaryEmail = socialUserInfo.Email.StartsWith("fb_") && socialUserInfo.Email.EndsWith("@facebook.temp");
+                    
                     // Tạo user mới
                     user = new User
                     {
@@ -1056,7 +1062,7 @@ namespace GiaLaiOCOP.Api.Controllers
                         Role = "Customer",
                         FacebookId = socialUserInfo.ProviderId,
                         AvatarUrl = socialUserInfo.PictureUrl,
-                        IsEmailVerified = true, // Facebook đã xác thực email
+                        IsEmailVerified = !isTemporaryEmail, // Chỉ verified nếu có email thật từ Facebook
                         IsActive = true
                     };
 

@@ -32,3 +32,10 @@ artifacts/
 # Environment
 .env
 .env.*
+
+# Configuration files with secrets (keep template)
+appsettings.Production.json
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+!appsettings.Template.json

@@ -161,10 +161,18 @@ namespace GiaLaiOCOP.Api.Services
                     return null;
                 }
 
+                // Facebook có thể không trả về email nếu user không cấp quyền
+                // Trong trường hợp này, ta sẽ tạo email tạm từ Facebook ID
+                string email;
                 if (string.IsNullOrEmpty(userInfo.Email))
                 {
-                    _logger.LogWarning("Facebook user info missing Email");
-                    return null;
+                    _logger.LogWarning($"Facebook user info missing Email for ID: {userInfo.Id}. Creating temporary email.");
+                    // Tạo email tạm từ Facebook ID (sẽ yêu cầu user cập nhật sau)
+                    email = $"fb_{userInfo.Id}@facebook.temp";
+                }
+                else
+                {
+                    email = userInfo.Email.ToLower().Trim();
                 }
 
                 // Lấy URL ảnh từ picture object
@@ -177,8 +185,8 @@ namespace GiaLaiOCOP.Api.Services
                 var socialUserInfo = new SocialUserInfo
                 {
                     ProviderId = userInfo.Id,
-                    Email = userInfo.Email.ToLower().Trim(),
-                    Name = userInfo.Name ?? userInfo.Email.Split('@')[0],
+                    Email = email,
+                    Name = userInfo.Name ?? (userInfo.Email?.Split('@')[0] ?? $"User_{userInfo.Id}"),
                     PictureUrl = pictureUrl
                 };
 
