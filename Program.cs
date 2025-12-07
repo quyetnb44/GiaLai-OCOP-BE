@@ -15,8 +15,28 @@ using System.IdentityModel.Tokens.Jwt;
 using Microsoft.Extensions.FileProviders;
 using System.IO;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
-var builder = WebApplication.CreateBuilder(args);
+// 🔹 Cấu hình cho Production trên Render - Tắt reloadOnChange để tránh inotify limit
+// 🔥 Đảm bảo ASPNETCORE_ENVIRONMENT = Production trên Render
+var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    EnvironmentName = environmentName
+});
+
+// 🔹 Xóa tất cả config sources mặc định (có thể có reloadOnChange = true)
+builder.Configuration.Sources.Clear();
+
+// 🔹 Tạo lại ConfigurationBuilder để tắt reloadOnChange và chỉ load appsettings.json + Production
+// 🔥 Production: Chỉ load appsettings.json và appsettings.Production.json
+// 🔥 Không load Development hoặc Local files để tránh inotify limit
+builder.Configuration
+    .SetBasePath(builder.Environment.ContentRootPath)
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: false)
+    .AddEnvironmentVariables(); // Environment variables override file config (quan trọng cho Render)
 
 // 🔹 Kết nối Database (chỉ khi không phải Testing environment)
 if (!builder.Environment.EnvironmentName.Equals("Testing", StringComparison.OrdinalIgnoreCase))
@@ -189,6 +209,8 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseCors("AllowAll");
 
 // 🔹 Serve static files (uploads/images + avatars)
+// 🔥 Production: PhysicalFileProvider không tự động watch files nếu không sử dụng IChangeToken
+// StaticFileMiddleware không sử dụng Watch() nên không gây inotify limit
 app.UseStaticFiles();
 
 var avatarsRoot = Path.Combine(builder.Environment.ContentRootPath, "uploads", "images", "avatars");
@@ -197,10 +219,12 @@ if (!Directory.Exists(avatarsRoot))
     Directory.CreateDirectory(avatarsRoot);
 }
 
+var imagesPath = Path.Combine(builder.Environment.ContentRootPath, "uploads", "images");
+var imagesFileProvider = new PhysicalFileProvider(imagesPath);
+
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(
-        Path.Combine(builder.Environment.ContentRootPath, "uploads", "images")),
+    FileProvider = imagesFileProvider,
     RequestPath = "/uploads/images"
 });
 
@@ -210,9 +234,11 @@ if (!Directory.Exists(documentsRoot))
     Directory.CreateDirectory(documentsRoot);
 }
 
+var documentsFileProvider = new PhysicalFileProvider(documentsRoot);
+
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(documentsRoot),
+    FileProvider = documentsFileProvider,
     RequestPath = "/uploads/documents"
 });
 
