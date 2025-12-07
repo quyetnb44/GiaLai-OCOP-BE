@@ -45,13 +45,20 @@ Tài liệu này hướng dẫn cách deploy ứng dụng ASP.NET Core lên Rend
 
 **Build Command:**
 ```bash
-dotnet restore && dotnet build -c Release
+dotnet restore && dotnet publish GiaLaiOCOP.Api.csproj -c Release -o ./publish
 ```
+
+**Lưu ý:** Publish từ project file (`.csproj`) thay vì solution để tránh warning và đảm bảo chỉ publish project chính.
 
 **Start Command:**
 ```bash
-dotnet GiaLaiOCOP.Api.dll --urls http://0.0.0.0:$PORT
+dotnet ./publish/GiaLaiOCOP.Api.dll
 ```
+
+**Lưu ý:** 
+- Build command phải **publish** project (không chỉ build) để tạo thư mục `publish` với tất cả dependencies
+- Start command chạy từ thư mục `publish` nơi chứa DLL đã được publish
+- Code đã tự động detect biến môi trường `PORT` và bind vào `0.0.0.0:$PORT`, không cần thêm `--urls` trong start command
 
 **Health Check Path:** `/health`
 
@@ -209,6 +216,15 @@ Kiểm tra logs trên Render Dashboard:
 
 ## 🐛 Troubleshooting
 
+### Lỗi: "No open ports detected on 0.0.0.0"
+
+**Nguyên nhân:** Ứng dụng không bind vào port mà Render cung cấp
+
+**Giải pháp:** 
+- ✅ Đã được fix trong code - tự động detect biến môi trường `PORT` và bind vào `0.0.0.0:$PORT`
+- Đảm bảo Start Command trong Render là: `dotnet ./publish/GiaLaiOCOP.Api.dll` (không cần thêm `--urls`)
+- Render tự động cung cấp biến môi trường `PORT`, code sẽ tự động sử dụng
+
 ### Lỗi: "status 139" hoặc "inotify limit"
 
 **Nguyên nhân:** Config files có `reloadOnChange: true`
@@ -263,7 +279,11 @@ Trước khi deploy, đảm bảo:
 - [ ] Đã tạo PostgreSQL database trên Render
 - [ ] Đã thêm Database Connection String vào Environment Variables
 - [ ] Đã cấu hình CORS với frontend domain
-- [ ] Đã test build thành công local với `dotnet build -c Release`
+- [ ] Đã test build và publish thành công local:
+  ```bash
+  dotnet publish GiaLaiOCOP.Api.csproj -c Release -o ./publish
+  dotnet ./publish/GiaLaiOCOP.Api.dll
+  ```
 - [ ] Đã commit và push code lên GitHub
 - [ ] Đã cấu hình Health Check Path: `/health`
 

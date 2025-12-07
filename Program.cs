@@ -193,6 +193,14 @@ builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("database");
 
+// 🔥 Render Production: Cấu hình Kestrel để bind vào port từ environment variable PORT
+// Render cung cấp biến môi trường PORT và yêu cầu bind vào 0.0.0.0:$PORT
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port) && int.TryParse(port, out var portNumber))
+{
+    // Render: Configure Kestrel để listen trên 0.0.0.0:$PORT
+    builder.WebHost.UseUrls($"http://0.0.0.0:{portNumber}");
+}
 
 var app = builder.Build();
 
@@ -329,6 +337,7 @@ if (!app.Environment.EnvironmentName.Equals("Testing", StringComparison.OrdinalI
         // await GiaLaiOCOP.Api.Scripts.UpdateAverageRatingsScript.RunAsync(db, ratingService);
     }
 }
+
 app.Run();
 
 // Make Program class accessible for integration tests
