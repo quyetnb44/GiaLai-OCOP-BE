@@ -71,18 +71,57 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 GET: api/users
-        // Chỉ SystemAdmin xem tất cả user
-        [Authorize(Roles = "SystemAdmin")]
+        // SystemAdmin: xem tất cả user
+        // EnterpriseAdmin: xem danh sách Customer (những người đã đặt hàng sản phẩm của enterprise)
         [HttpGet]
         public async Task<ActionResult<IEnumerable<UserDto>>> GetUsers()
         {
-            var users = await _context.Users
-                .Include(u => u.Enterprise)
-                .ToListAsync();
+            var currentUserId = await GetCurrentUserIdAsync();
+            if (currentUserId == null) return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
-            var usersDto = users.Select(MapUserToDto).ToList();
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            
+            if (role == "SystemAdmin")
+            {
+                // SystemAdmin: xem tất cả user
+                var users = await _context.Users
+                    .Include(u => u.Enterprise)
+                    .ToListAsync();
 
-            return Ok(usersDto);
+                var usersDto = users.Select(MapUserToDto).ToList();
+                return Ok(usersDto);
+            }
+            else if (role == "EnterpriseAdmin")
+            {
+                // EnterpriseAdmin: chỉ xem Customer (những người đã đặt hàng sản phẩm của enterprise)
+                var currentUser = await _context.Users.FindAsync(currentUserId.Value);
+                if (currentUser == null || !currentUser.EnterpriseId.HasValue)
+                    return Forbid("EnterpriseAdmin không thuộc Enterprise nào.");
+
+                var enterpriseId = currentUser.EnterpriseId.Value;
+                
+                // Lấy danh sách Customer đã đặt hàng sản phẩm của enterprise này
+                var customerIds = await _context.Orders
+                    .Include(o => o.OrderItems)
+                        .ThenInclude(oi => oi.Product)
+                    .Where(o => o.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId))
+                    .Select(o => o.UserId)
+                    .Distinct()
+                    .ToListAsync();
+
+                // Lấy thông tin các Customer
+                var customers = await _context.Users
+                    .Include(u => u.Enterprise)
+                    .Where(u => customerIds.Contains(u.Id) && u.Role == "Customer")
+                    .ToListAsync();
+
+                var customersDto = customers.Select(MapUserToDto).ToList();
+                return Ok(customersDto);
+            }
+            else
+            {
+                return Forbid("Chỉ SystemAdmin và EnterpriseAdmin mới có thể xem danh sách user.");
+            }
         }
 
         // 🔹 GET: api/users/me - Lấy thông tin user hiện tại
@@ -102,7 +141,9 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 GET: api/users/{id}
-        // SystemAdmin xem tất cả, Customer/EnterpriseAdmin xem chính mình
+        // SystemAdmin xem tất cả
+        // Customer xem chính mình
+        // EnterpriseAdmin xem chính mình hoặc Customer (để xem thông tin người đặt hàng)
         [HttpGet("{id}")]
         public async Task<ActionResult<UserDto>> GetUser(int id)
         {
@@ -114,10 +155,41 @@ namespace GiaLaiOCOP.Api.Controllers
             if (currentUserId == null) return Forbid();
 
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            if (role != "SystemAdmin" && currentUserId.Value != id)
-                return Forbid();
-
-            return Ok(MapUserToDto(targetUser));
+            
+            // SystemAdmin: xem tất cả
+            if (role == "SystemAdmin")
+            {
+                return Ok(MapUserToDto(targetUser));
+            }
+            
+            // Customer: chỉ xem chính mình
+            if (role == "Customer")
+            {
+                if (currentUserId.Value != id)
+                    return Forbid("Bạn chỉ có thể xem thông tin của chính mình.");
+                return Ok(MapUserToDto(targetUser));
+            }
+            
+            // EnterpriseAdmin: xem chính mình hoặc Customer
+            if (role == "EnterpriseAdmin")
+            {
+                // Xem chính mình
+                if (currentUserId.Value == id)
+                {
+                    return Ok(MapUserToDto(targetUser));
+                }
+                
+                // Xem Customer (để xem thông tin người đặt hàng)
+                if (targetUser.Role == "Customer")
+                {
+                    return Ok(MapUserToDto(targetUser));
+                }
+                
+                // Không được xem EnterpriseAdmin hoặc SystemAdmin khác
+                return Forbid("Bạn chỉ có thể xem thông tin của chính mình hoặc khách hàng.");
+            }
+            
+            return Forbid();
         }
 
         // 🔹 POST: api/users/enterprise-admin

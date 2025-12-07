@@ -22,9 +22,22 @@ namespace GiaLaiOCOP.Api.Dtos
         public DateTime? DeliveredAt { get; set; }
         public string? DeliveryNotes { get; set; }
 
+        // 🔹 Thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
+        public CustomerInfoDto? Customer { get; set; }
+
         // Danh sách chi tiết đơn hàng (có thể null nếu chỉ lấy đơn)
         public List<OrderItemDto>? OrderItems { get; set; }
 
         public List<PaymentDto>? Payments { get; set; }
+    }
+
+    // 🔹 Thông tin Customer cơ bản (để tránh circular reference)
+    public class CustomerInfoDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string? PhoneNumber { get; set; }
+        public string? AvatarUrl { get; set; }
     }
 }

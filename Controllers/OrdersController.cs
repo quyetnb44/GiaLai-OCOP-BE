@@ -61,6 +61,7 @@ namespace GiaLaiOCOP.Api.Controllers
             if (role == "Customer")
             {
                 query = _context.Orders
+                    .Include(o => o.User) // 🔹 Include User (chính mình)
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
                     .Include(o => o.Payments)
                     .Where(o => o.UserId == userId.Value);
@@ -72,6 +73,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     return Forbid("EnterpriseAdmin không thuộc Enterprise nào.");
                 
                 query = _context.Orders
+                    .Include(o => o.User) // 🔹 Include User để lấy thông tin Customer
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
                     .Include(o => o.Payments)
                     .Where(o => o.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId));
@@ -79,6 +81,7 @@ namespace GiaLaiOCOP.Api.Controllers
             else if (role == "SystemAdmin")
             {
                 query = _context.Orders
+                    .Include(o => o.User) // 🔹 Include User để lấy thông tin Customer
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
                     .Include(o => o.Payments);
             }
@@ -138,6 +141,15 @@ namespace GiaLaiOCOP.Api.Controllers
                     ShippedAt = o.ShippedAt,
                     DeliveredAt = o.DeliveredAt,
                     DeliveryNotes = o.DeliveryNotes,
+                    // 🔹 Thêm thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
+                    Customer = o.User != null ? new CustomerInfoDto
+                    {
+                        Id = o.User.Id,
+                        Name = o.User.Name,
+                        Email = o.User.Email,
+                        PhoneNumber = o.User.PhoneNumber,
+                        AvatarUrl = o.User.AvatarUrl
+                    } : null,
                     OrderItems = o.OrderItems.Select(oi => new OrderItemDto
                     {
                         Id = oi.Id,
@@ -169,6 +181,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             var order = await _context.Orders
+                .Include(o => o.User) // 🔹 Include User để lấy thông tin Customer
                 .Include(o => o.ShippingAddressDetail) // 🔹 Load ShippingAddressDetail từ database
                 .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
                 .Include(o => o.Payments)
@@ -210,6 +223,12 @@ namespace GiaLaiOCOP.Api.Controllers
                 shippingAddress = order.ShippingAddress;
             }
 
+            // 🔹 Load User (Customer) nếu chưa có
+            if (order.User == null)
+            {
+                await _context.Entry(order).Reference(o => o.User).LoadAsync();
+            }
+
             var orderDto = new OrderDto
             {
                 Id = order.Id,
@@ -226,6 +245,15 @@ namespace GiaLaiOCOP.Api.Controllers
                 ShippedAt = order.ShippedAt,
                 DeliveredAt = order.DeliveredAt,
                 DeliveryNotes = order.DeliveryNotes,
+                // 🔹 Thêm thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
+                Customer = order.User != null ? new CustomerInfoDto
+                {
+                    Id = order.User.Id,
+                    Name = order.User.Name,
+                    Email = order.User.Email,
+                    PhoneNumber = order.User.PhoneNumber,
+                    AvatarUrl = order.User.AvatarUrl
+                } : null,
                 OrderItems = order.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
