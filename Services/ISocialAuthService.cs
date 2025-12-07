@@ -25,6 +25,7 @@ namespace GiaLaiOCOP.Api.Services
         public string Email { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string? PictureUrl { get; set; } // URL ảnh đại diện
+        public bool IsEmailVerified { get; set; } = true; // Email đã được verify bởi provider (Google luôn verify, Facebook có thể không)
     }
 }
 
