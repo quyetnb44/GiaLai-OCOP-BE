@@ -114,13 +114,13 @@ builder.Services.AddCors(options =>
     {
         // Production: Chỉ cho phép origins cụ thể
         var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
-                           ?? new[] { "https://yourdomain.com" };
+                           ?? new[] { "https://gialai-ocop-frontend-2.onrender.com" };
         
         options.AddPolicy("AllowAll", policy =>
             policy.WithOrigins(allowedOrigins)
                   .AllowAnyHeader()
                   .AllowAnyMethod()
-                  .AllowCredentials());
+                  .AllowCredentials()); // Frontend uses credentials: "omit" so this is compatible
     }
 });
 
@@ -204,19 +204,30 @@ if (!string.IsNullOrEmpty(port) && int.TryParse(port, out var portNumber))
 
 var app = builder.Build();
 
-// 🔹 Middleware
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-// 🔹 Global Exception Handler (phải đặt trước các middleware khác)
+// 🔹 Middleware Pipeline - Đảm bảo thứ tự đúng:
+// 1. Global Exception Handler (phải đặt đầu tiên để catch mọi exception)
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
+// 2. Swagger (bật cho cả Production và Development)
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "GiaLaiOCOP API v1");
+    c.RoutePrefix = "swagger"; // Swagger UI sẽ ở /swagger
+    c.DisplayRequestDuration(); // Hiển thị thời gian request
+});
+
+// 3. HTTPS Redirection (nếu cần, Render tự động xử lý HTTPS)
+// app.UseHttpsRedirection(); // Không cần trên Render vì Render tự động xử lý
+
+// 4. CORS (phải đặt trước Authentication)
+// Log CORS configuration for debugging
+var corsAllowedOrigins = app.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+                       ?? new[] { "https://gialai-ocop-frontend-2.onrender.com" };
+app.Logger.LogInformation($"🔹 CORS Allowed Origins: {string.Join(", ", corsAllowedOrigins)}");
 app.UseCors("AllowAll");
 
-// 🔹 Serve static files (uploads/images + avatars)
+// 5. Static Files (serve static content - uploads/images, documents)
 // 🔥 Production: PhysicalFileProvider không tự động watch files nếu không sử dụng IChangeToken
 // StaticFileMiddleware không sử dụng Watch() nên không gây inotify limit
 app.UseStaticFiles();
@@ -250,9 +261,13 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/uploads/documents"
 });
 
+// 6. Authentication (phải đặt trước Authorization)
 app.UseAuthentication();
+
+// 7. Authorization (phải đặt sau Authentication)
 app.UseAuthorization();
 
+// 8. Controllers (routing và endpoints - phải đặt cuối cùng)
 app.MapControllers();
 
 // 🔹 Health Check endpoint
