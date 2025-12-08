@@ -189,6 +189,12 @@ builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection(
 // 🔹 Cloudinary service
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 
+// 🔹 Wallet services
+builder.Services.AddScoped<IWalletService, WalletService>();
+builder.Services.AddScoped<IVietQRPaymentService, VietQRPaymentService>();
+builder.Services.AddScoped<IWalletRequestService, WalletRequestService>();
+builder.Services.AddScoped<IBankAccountService, BankAccountService>();
+
 // 🔹 Add Health Checks
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("database");

@@ -31,6 +31,10 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<InventoryHistory> InventoryHistories { get; set; }
         public DbSet<EnterpriseSettings> EnterpriseSettings { get; set; }
         public DbSet<EnterpriseBankInfo> EnterpriseBankInfos { get; set; }
+        public DbSet<Wallet> Wallets { get; set; }
+        public DbSet<WalletTransaction> WalletTransactions { get; set; }
+        public DbSet<WalletRequest> WalletRequests { get; set; }
+        public DbSet<BankAccount> BankAccounts { get; set; }
 
 
 
@@ -244,6 +248,84 @@ namespace GiaLaiOCOP.Api.Data
                 .WithMany()
                 .HasForeignKey(ev => ev.UserId)
                 .OnDelete(DeleteBehavior.SetNull); // Set null khi user bị xóa (không xóa OTP)
+
+            // 🟩 Cấu hình quan hệ User - Wallet (1-1)
+            modelBuilder.Entity<Wallet>()
+                .HasOne(w => w.User)
+                .WithMany()
+                .HasForeignKey(w => w.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🟩 Đảm bảo mỗi User chỉ có một Wallet
+            modelBuilder.Entity<Wallet>()
+                .HasIndex(w => w.UserId)
+                .IsUnique();
+
+            // 🟩 Cấu hình quan hệ Wallet - WalletTransaction (1-n)
+            modelBuilder.Entity<WalletTransaction>()
+                .HasOne(wt => wt.Wallet)
+                .WithMany(w => w.Transactions)
+                .HasForeignKey(wt => wt.WalletId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🟩 Cấu hình quan hệ WalletTransaction - Order (n-1, optional)
+            modelBuilder.Entity<WalletTransaction>()
+                .HasOne(wt => wt.Order)
+                .WithMany()
+                .HasForeignKey(wt => wt.OrderId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // 🟩 Cấu hình decimal cho Wallet và WalletTransaction
+            modelBuilder.Entity<Wallet>()
+                .Property(w => w.Balance)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<WalletTransaction>()
+                .Property(wt => wt.Amount)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<WalletTransaction>()
+                .Property(wt => wt.BalanceAfter)
+                .HasColumnType("decimal(18,2)");
+
+            // 🟩 Cấu hình quan hệ WalletRequest - User (n-1)
+            modelBuilder.Entity<WalletRequest>()
+                .HasOne(wr => wr.User)
+                .WithMany()
+                .HasForeignKey(wr => wr.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // 🟩 Cấu hình quan hệ WalletRequest - Wallet (n-1)
+            modelBuilder.Entity<WalletRequest>()
+                .HasOne(wr => wr.Wallet)
+                .WithMany()
+                .HasForeignKey(wr => wr.WalletId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // 🟩 Cấu hình quan hệ WalletRequest - ProcessedByUser (n-1, optional)
+            modelBuilder.Entity<WalletRequest>()
+                .HasOne(wr => wr.ProcessedByUser)
+                .WithMany()
+                .HasForeignKey(wr => wr.ProcessedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // 🟩 Cấu hình decimal cho WalletRequest
+            modelBuilder.Entity<WalletRequest>()
+                .Property(wr => wr.Amount)
+                .HasColumnType("decimal(18,2)");
+
+            // 🟩 Cấu hình quan hệ User - BankAccount (1-n)
+            modelBuilder.Entity<BankAccount>()
+                .HasOne(ba => ba.User)
+                .WithMany()
+                .HasForeignKey(ba => ba.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🟩 Đảm bảo chỉ một tài khoản mặc định cho mỗi user
+            modelBuilder.Entity<BankAccount>()
+                .HasIndex(ba => new { ba.UserId, ba.IsDefault })
+                .IsUnique()
+                .HasFilter("\"IsDefault\" = true");
         }
     }
 }

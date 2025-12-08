@@ -222,6 +222,17 @@ namespace GiaLaiOCOP.Api.Controllers
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
+            // 🔹 Tự động tạo ví cho EnterpriseAdmin mới
+            var wallet = new Wallet
+            {
+                UserId = user.Id,
+                Balance = 0,
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Wallets.Add(wallet);
+            await _context.SaveChangesAsync();
+
             user.Enterprise = enterprise;
             var userDto = MapUserToDto(user);
 
@@ -251,6 +262,17 @@ namespace GiaLaiOCOP.Api.Controllers
             };
 
             _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            // 🔹 Tự động tạo ví cho Customer mới
+            var wallet = new Wallet
+            {
+                UserId = user.Id,
+                Balance = 0,
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Wallets.Add(wallet);
             await _context.SaveChangesAsync();
 
             var userDto = MapUserToDto(user);

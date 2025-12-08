@@ -226,6 +226,17 @@ namespace GiaLaiOCOP.Api.Controllers
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
+            // 🔹 Tự động tạo ví cho user mới đăng ký
+            var wallet = new Wallet
+            {
+                UserId = user.Id,
+                Balance = 0,
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Wallets.Add(wallet);
+            await _context.SaveChangesAsync();
+
             // Tạo JWT token cho user mới đăng ký - đảm bảo email được normalize
             var normalizedEmail = user.Email.Trim().ToLower();
             var claims = new List<Claim>
@@ -642,6 +653,17 @@ namespace GiaLaiOCOP.Api.Controllers
             // Đánh dấu OTP đã sử dụng
             emailVerification.IsUsed = true;
             
+            await _context.SaveChangesAsync();
+
+            // 🔹 Tự động tạo ví cho user mới đăng ký
+            var wallet = new Wallet
+            {
+                UserId = user.Id,
+                Balance = 0,
+                Currency = "VND",
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Wallets.Add(wallet);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction(nameof(Register), new { id = user.Id }, new 

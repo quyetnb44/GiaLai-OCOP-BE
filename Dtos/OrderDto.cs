@@ -39,5 +39,6 @@ namespace GiaLaiOCOP.Api.Dtos
         public string Email { get; set; } = string.Empty;
         public string? PhoneNumber { get; set; }
         public string? AvatarUrl { get; set; }
+        public string? Address { get; set; } // Địa chỉ đầy đủ của customer
     }
 }
