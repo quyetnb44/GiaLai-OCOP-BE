@@ -5,6 +5,7 @@ using GiaLaiOCOP.Api.Data;
 using GiaLaiOCOP.Api.Models;
 using GiaLaiOCOP.Api.Dtos;
 using GiaLaiOCOP.Api.Options;
+using GiaLaiOCOP.Api.Services;
 using Microsoft.Extensions.Options;
 using System;
 using System.Security.Claims;
@@ -19,11 +20,16 @@ namespace GiaLaiOCOP.Api.Controllers
     {
         private readonly AppDbContext _context;
         private readonly IOptions<BankTransferSettings> _bankOptions;
+        private readonly IWalletService _walletService;
 
-        public OrdersController(AppDbContext context, IOptions<BankTransferSettings> bankOptions)
+        public OrdersController(
+            AppDbContext context, 
+            IOptions<BankTransferSettings> bankOptions,
+            IWalletService walletService)
         {
             _context = context;
             _bankOptions = bankOptions;
+            _walletService = walletService;
         }
 
         // Helper method để lấy userId từ token
@@ -160,6 +166,10 @@ namespace GiaLaiOCOP.Api.Controllers
                     ShippedAt = o.ShippedAt,
                     DeliveredAt = o.DeliveredAt,
                     DeliveryNotes = o.DeliveryNotes,
+                    CompletionRequestedAt = o.CompletionRequestedAt,
+                    CompletionApprovedAt = o.CompletionApprovedAt,
+                    CompletionRejectedAt = o.CompletionRejectedAt,
+                    CompletionRejectionReason = o.CompletionRejectionReason,
                     // 🔹 Thêm thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
                     Customer = o.User != null ? new CustomerInfoDto
                     {
@@ -267,11 +277,15 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
                 ShipperId = order.ShipperId,
-                ShippedAt = order.ShippedAt,
-                DeliveredAt = order.DeliveredAt,
-                DeliveryNotes = order.DeliveryNotes,
-                // 🔹 Thêm thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
-                Customer = order.User != null ? new CustomerInfoDto
+                    ShippedAt = order.ShippedAt,
+                    DeliveredAt = order.DeliveredAt,
+                    DeliveryNotes = order.DeliveryNotes,
+                    CompletionRequestedAt = order.CompletionRequestedAt,
+                    CompletionApprovedAt = order.CompletionApprovedAt,
+                    CompletionRejectedAt = order.CompletionRejectedAt,
+                    CompletionRejectionReason = order.CompletionRejectionReason,
+                    // 🔹 Thêm thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
+                    Customer = order.User != null ? new CustomerInfoDto
                 {
                     Id = order.User.Id,
                     Name = order.User.Name,
@@ -425,6 +439,10 @@ namespace GiaLaiOCOP.Api.Controllers
                 ShippedAt = order.ShippedAt,
                 DeliveredAt = order.DeliveredAt,
                 DeliveryNotes = order.DeliveryNotes,
+                CompletionRequestedAt = order.CompletionRequestedAt,
+                CompletionApprovedAt = order.CompletionApprovedAt,
+                CompletionRejectedAt = order.CompletionRejectedAt,
+                CompletionRejectionReason = order.CompletionRejectionReason,
                 OrderItems = order.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
@@ -460,7 +478,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             // 🔹 Validation: Status hợp lệ
-            var validStatuses = new[] { "Pending", "Processing", "Shipped", "Completed", "Cancelled" };
+            var validStatuses = new[] { "Pending", "Processing", "Shipped", "Completed", "Cancelled", "PendingCompletion" };
             if (!validStatuses.Contains(dto.Status))
                 return BadRequest($"Status không hợp lệ. Chỉ chấp nhận: {string.Join(", ", validStatuses)}");
 
@@ -509,6 +527,279 @@ namespace GiaLaiOCOP.Api.Controllers
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+
+        // 🔹 POST /api/orders/{id}/request-completion - EnterpriseAdmin gửi yêu cầu xác nhận hoàn thành
+        [Authorize(Roles = "EnterpriseAdmin")]
+        [HttpPost("{id}/request-completion")]
+        public async Task<ActionResult<OrderDto>> RequestOrderCompletion(int id, [FromBody] RequestOrderCompletionDto dto)
+        {
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null)
+                return NotFound("Không tìm thấy đơn hàng.");
+
+            // Kiểm tra quyền: EnterpriseAdmin chỉ có thể request completion cho đơn hàng có sản phẩm của Enterprise mình
+            var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
+            if (enterpriseId == 0)
+                return Forbid("EnterpriseAdmin không thuộc Enterprise nào.");
+
+            var hasAccess = order.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId);
+            if (!hasAccess)
+                return Forbid("Bạn chỉ có thể gửi yêu cầu xác nhận hoàn thành cho đơn hàng có sản phẩm của doanh nghiệp mình.");
+
+            // Chỉ cho phép request completion khi đơn hàng ở trạng thái "Shipped"
+            if (order.Status != "Shipped")
+                return BadRequest("Chỉ có thể gửi yêu cầu xác nhận hoàn thành khi đơn hàng ở trạng thái Shipped.");
+
+            // Cập nhật trạng thái và thông tin completion
+            order.Status = "PendingCompletion";
+            order.CompletionRequestedAt = DateTime.UtcNow;
+            order.CompletionRejectedAt = null; // Reset rejection info nếu có
+            order.CompletionRejectionReason = null;
+
+            await _context.SaveChangesAsync();
+
+            // Tạo notification cho SystemAdmin
+            await CreateCompletionRequestNotificationAsync(order.Id, enterpriseId);
+
+            // Reload order để trả về đầy đủ thông tin
+            await _context.Entry(order).Reference(o => o.User).LoadAsync();
+            await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
+            await _context.Entry(order).Collection(o => o.Payments).LoadAsync();
+
+            var orderDto = MapOrderToDto(order);
+            return Ok(orderDto);
+        }
+
+        // 🔹 POST /api/orders/{id}/approve-completion - SystemAdmin xác nhận hoặc từ chối hoàn thành đơn hàng
+        [Authorize(Roles = "SystemAdmin")]
+        [HttpPost("{id}/approve-completion")]
+        public async Task<ActionResult<OrderDto>> ApproveOrderCompletion(int id, [FromBody] ApproveOrderCompletionDto dto)
+        {
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null)
+                return NotFound("Không tìm thấy đơn hàng.");
+
+            // Chỉ có thể approve/reject khi đơn hàng ở trạng thái "PendingCompletion"
+            if (order.Status != "PendingCompletion")
+                return BadRequest("Chỉ có thể xác nhận hoặc từ chối đơn hàng ở trạng thái PendingCompletion.");
+
+            if (dto.Approved)
+            {
+                // Approve: Chuyển sang Completed và cộng tiền vào ví của EnterpriseAdmin
+                order.Status = "Completed";
+                order.CompletionApprovedAt = DateTime.UtcNow;
+                order.CompletionRejectedAt = null;
+                order.CompletionRejectionReason = null;
+
+                await _context.SaveChangesAsync();
+
+                // Tính toán số tiền cho mỗi Enterprise và cộng vào ví của EnterpriseAdmin
+                var enterpriseAmounts = order.OrderItems
+                    .Where(oi => oi.Product != null)
+                    .GroupBy(oi => oi.Product!.EnterpriseId)
+                    .Select(g => new
+                    {
+                        EnterpriseId = g.Key,
+                        Amount = g.Sum(oi => oi.Price * oi.Quantity)
+                    })
+                    .ToList();
+
+                foreach (var enterpriseAmount in enterpriseAmounts)
+                {
+                    // Tìm EnterpriseAdmin của Enterprise này
+                    var enterpriseAdmin = await _context.Users
+                        .FirstOrDefaultAsync(u => u.EnterpriseId == enterpriseAmount.EnterpriseId && u.Role == "EnterpriseAdmin");
+
+                    if (enterpriseAdmin != null)
+                    {
+                        // Cộng tiền vào ví của EnterpriseAdmin
+                        var description = $"Thanh toán đơn hàng #{order.Id} - Đơn hàng đã được xác nhận hoàn thành";
+                        await _walletService.UpdateUserWalletBalanceAsync(
+                            enterpriseAdmin.Id,
+                            enterpriseAmount.Amount,
+                            description,
+                            userId.Value
+                        );
+
+                        // Tạo notification cho EnterpriseAdmin về việc cộng tiền
+                        _context.Notifications.Add(new Notification
+                        {
+                            Type = "wallet_deposit",
+                            Title = $"Đã cộng {enterpriseAmount.Amount:N0} VND vào ví",
+                            Message = $"Đơn hàng #{order.Id} đã được SystemAdmin xác nhận hoàn thành. Số tiền {enterpriseAmount.Amount:N0} VND từ đơn hàng này đã được cộng vào ví của bạn.",
+                            UserId = enterpriseAdmin.Id,
+                            EnterpriseId = enterpriseAmount.EnterpriseId,
+                            OrderId = order.Id,
+                            Link = $"/wallet",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+
+                // Tạo notification về việc đơn hàng được xác nhận hoàn thành
+                var enterpriseIds = order.OrderItems
+                    .Where(oi => oi.Product != null)
+                    .Select(oi => oi.Product!.EnterpriseId)
+                    .Distinct()
+                    .ToList();
+
+                foreach (var enterpriseId in enterpriseIds)
+                {
+                    _context.Notifications.Add(new Notification
+                    {
+                        Type = "order_completion_approved",
+                        Title = $"Đơn hàng #{order.Id} đã được xác nhận hoàn thành",
+                        Message = $"Đơn hàng #{order.Id} đã được SystemAdmin xác nhận hoàn thành.",
+                        EnterpriseId = enterpriseId,
+                        OrderId = order.Id,
+                        Link = $"/orders/{order.Id}",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+            }
+            else
+            {
+                // Reject: Quay lại Shipped và lưu lý do từ chối
+                if (string.IsNullOrWhiteSpace(dto.RejectionReason))
+                    return BadRequest("Vui lòng nhập lý do từ chối.");
+
+                order.Status = "Shipped";
+                order.CompletionRejectedAt = DateTime.UtcNow;
+                order.CompletionRejectionReason = dto.RejectionReason.Trim();
+                order.CompletionApprovedAt = null;
+
+                await _context.SaveChangesAsync();
+
+                // Tạo notification cho EnterpriseAdmin về việc từ chối
+                var enterpriseIds = order.OrderItems
+                    .Where(oi => oi.Product != null)
+                    .Select(oi => oi.Product!.EnterpriseId)
+                    .Distinct()
+                    .ToList();
+
+                foreach (var enterpriseId in enterpriseIds)
+                {
+                    _context.Notifications.Add(new Notification
+                    {
+                        Type = "order_completion_rejected",
+                        Title = $"Yêu cầu hoàn thành đơn hàng #{order.Id} bị từ chối",
+                        Message = $"Yêu cầu hoàn thành đơn hàng #{order.Id} đã bị từ chối. Lý do: {dto.RejectionReason}",
+                        EnterpriseId = enterpriseId,
+                        OrderId = order.Id,
+                        Link = $"/orders/{order.Id}",
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            // Reload order để trả về đầy đủ thông tin
+            await _context.Entry(order).Reference(o => o.User).LoadAsync();
+            await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
+            await _context.Entry(order).Collection(o => o.Payments).LoadAsync();
+
+            var orderDto = MapOrderToDto(order);
+            return Ok(orderDto);
+        }
+
+        // 🔹 Helper method để tạo notification khi EnterpriseAdmin request completion
+        private async Task CreateCompletionRequestNotificationAsync(int orderId, int enterpriseId)
+        {
+            // Tạo notification cho SystemAdmin (không có EnterpriseId cụ thể, SystemAdmin sẽ thấy tất cả)
+            // Hoặc có thể gửi cho tất cả SystemAdmin users
+            var systemAdmins = await _context.Users
+                .Where(u => u.Role == "SystemAdmin")
+                .ToListAsync();
+
+            foreach (var admin in systemAdmins)
+            {
+                _context.Notifications.Add(new Notification
+                {
+                    Type = "order_completion_request",
+                    Title = $"Yêu cầu xác nhận hoàn thành đơn hàng #{orderId}",
+                    Message = $"EnterpriseAdmin đã gửi yêu cầu xác nhận hoàn thành cho đơn hàng #{orderId}. Vui lòng xét duyệt.",
+                    UserId = admin.Id, // Gửi cho SystemAdmin cụ thể
+                    OrderId = orderId,
+                    Link = $"/admin/order-management",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            await _context.SaveChangesAsync();
+        }
+
+        // 🔹 Helper method để map Order sang OrderDto
+        private OrderDto MapOrderToDto(Order order)
+        {
+            // 🔹 Lấy địa chỉ từ ShippingAddressDetail hoặc ShippingAddress (string)
+            string? shippingAddress = null;
+            if (order.ShippingAddressId.HasValue && order.ShippingAddressDetail != null)
+            {
+                var addr = order.ShippingAddressDetail;
+                shippingAddress = $"{addr.FullName}, {addr.PhoneNumber}, {addr.AddressLine}, {addr.Ward}, {addr.District}, {addr.Province}";
+            }
+            else
+            {
+                shippingAddress = order.ShippingAddress;
+            }
+
+            return new OrderDto
+            {
+                Id = order.Id,
+                UserId = order.UserId,
+                OrderDate = order.OrderDate,
+                ShippingAddress = shippingAddress,
+                ShippingAddressId = order.ShippingAddressId,
+                TotalAmount = order.TotalAmount,
+                Status = order.Status,
+                PaymentMethod = order.PaymentMethod,
+                PaymentStatus = order.PaymentStatus,
+                PaymentReference = order.PaymentReference,
+                ShipperId = order.ShipperId,
+                ShippedAt = order.ShippedAt,
+                DeliveredAt = order.DeliveredAt,
+                DeliveryNotes = order.DeliveryNotes,
+                CompletionRequestedAt = order.CompletionRequestedAt,
+                CompletionApprovedAt = order.CompletionApprovedAt,
+                CompletionRejectedAt = order.CompletionRejectedAt,
+                CompletionRejectionReason = order.CompletionRejectionReason,
+                Customer = order.User != null ? new CustomerInfoDto
+                {
+                    Id = order.User.Id,
+                    Name = order.User.Name,
+                    Email = order.User.Email,
+                    PhoneNumber = order.User.PhoneNumber,
+                    AvatarUrl = order.User.AvatarUrl,
+                    Address = BuildCustomerAddress(order.User)
+                } : null,
+                OrderItems = order.OrderItems.Select(oi => new OrderItemDto
+                {
+                    Id = oi.Id,
+                    OrderId = oi.OrderId,
+                    ProductId = oi.ProductId,
+                    Quantity = oi.Quantity,
+                    Price = oi.Price
+                }).ToList(),
+                Payments = order.Payments.Select(MapPaymentToDto).ToList()
+            };
         }
 
         // 🔹 PUT /api/orders/{id}/shipping-address - Cập nhật địa chỉ giao hàng
@@ -773,8 +1064,22 @@ namespace GiaLaiOCOP.Api.Controllers
     public class UpdateOrderStatusDto
     {
         [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Status là bắt buộc.")]
-        [System.ComponentModel.DataAnnotations.RegularExpression("^(Pending|Processing|Shipped|Completed|Cancelled)$", 
-            ErrorMessage = "Status không hợp lệ. Chỉ chấp nhận: Pending, Processing, Shipped, Completed, Cancelled")]
+        [System.ComponentModel.DataAnnotations.RegularExpression("^(Pending|Processing|Shipped|Completed|Cancelled|PendingCompletion)$", 
+            ErrorMessage = "Status không hợp lệ. Chỉ chấp nhận: Pending, Processing, Shipped, Completed, Cancelled, PendingCompletion")]
         public string Status { get; set; } = string.Empty;
+    }
+
+    // 🔹 DTO cho Request Order Completion (EnterpriseAdmin)
+    public class RequestOrderCompletionDto
+    {
+        public string? Notes { get; set; }
+    }
+
+    // 🔹 DTO cho Approve Order Completion (SystemAdmin)
+    public class ApproveOrderCompletionDto
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public bool Approved { get; set; }
+        public string? RejectionReason { get; set; }
     }
 }

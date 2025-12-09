@@ -26,6 +26,16 @@ namespace GiaLaiOCOP.Api.Services
                 throw new Exception("Người dùng không tồn tại.");
             }
 
+            // Kiểm tra số lượng tài khoản ngân hàng hiện có
+            var existingBankAccountsCount = await _context.BankAccounts
+                .Where(ba => ba.UserId == userId && ba.IsActive)
+                .CountAsync();
+
+            if (existingBankAccountsCount >= 2)
+            {
+                throw new Exception("Mỗi người dùng chỉ được phép có tối đa 2 tài khoản ngân hàng.");
+            }
+
             // Nếu đặt làm mặc định, bỏ mặc định của các tài khoản khác
             if (dto.IsDefault)
             {

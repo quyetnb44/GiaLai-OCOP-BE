@@ -68,7 +68,9 @@ namespace GiaLaiOCOP.Api.Controllers
             return null;
         }
 
-        // POST: api/bankaccount - Tạo tài khoản ngân hàng mới (CHỈ SystemAdmin)
+        // POST: api/bankaccount - Tạo tài khoản ngân hàng mới
+        // Customer/EnterpriseAdmin: chỉ có thể tạo cho chính mình
+        // SystemAdmin: có thể tạo cho bất kỳ user nào
         [HttpPost]
         [ProducesResponseType(typeof(BankAccountDto), 201)]
         [ProducesResponseType(400)]
@@ -84,16 +86,24 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             var role = GetUserRoleFromToken();
-            if (role != "SystemAdmin")
-            {
-                return Forbid("Chỉ SystemAdmin mới có thể tạo tài khoản ngân hàng.");
-            }
-
+            
             try
             {
-                // SystemAdmin có thể tạo tài khoản cho bất kỳ user nào
-                // Nếu dto.UserId không có, tạo cho chính SystemAdmin
-                var targetUserId = dto.UserId ?? userId.Value;
+                int targetUserId;
+                
+                if (role == "SystemAdmin")
+                {
+                    // SystemAdmin có thể tạo tài khoản cho bất kỳ user nào
+                    // Nếu dto.UserId không có, tạo cho chính SystemAdmin
+                    targetUserId = dto.UserId ?? userId.Value;
+                }
+                else
+                {
+                    // Customer/EnterpriseAdmin chỉ có thể tạo cho chính mình
+                    // Bỏ qua dto.UserId nếu có và luôn tạo cho chính user đang đăng nhập
+                    targetUserId = userId.Value;
+                }
+                
                 var bankAccount = await _bankAccountService.CreateBankAccountAsync(targetUserId, dto);
                 return CreatedAtAction(nameof(GetBankAccount), new { id = bankAccount.Id }, bankAccount);
             }
@@ -200,7 +210,9 @@ namespace GiaLaiOCOP.Api.Controllers
             }
         }
 
-        // PUT: api/bankaccount/{id} - Cập nhật tài khoản ngân hàng (CHỈ SystemAdmin)
+        // PUT: api/bankaccount/{id} - Cập nhật tài khoản ngân hàng
+        // Customer/EnterpriseAdmin: chỉ có thể cập nhật tài khoản của chính mình
+        // SystemAdmin: có thể cập nhật tài khoản của bất kỳ user nào
         [HttpPut("{id}")]
         [ProducesResponseType(typeof(BankAccountDto), 200)]
         [ProducesResponseType(404)]
@@ -217,21 +229,36 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             var role = GetUserRoleFromToken();
-            if (role != "SystemAdmin")
-            {
-                return Forbid("Chỉ SystemAdmin mới có thể cập nhật tài khoản ngân hàng.");
-            }
 
             try
             {
-                // SystemAdmin có thể cập nhật tài khoản của bất kỳ user nào
-                // Lấy bankAccount không cần kiểm tra userId (SystemAdmin có quyền xem tất cả)
-                var bankAccount = await _bankAccountService.GetBankAccountByIdForAdminAsync(id);
-                if (bankAccount == null)
-                    return NotFound(new { message = "Tài khoản ngân hàng không tồn tại." });
+                BankAccountDto? bankAccount;
+                int targetUserId;
                 
-                // Update với userId của bankAccount owner
-                var updatedAccount = await _bankAccountService.UpdateBankAccountAsync(id, bankAccount.UserId, dto);
+                if (role == "SystemAdmin")
+                {
+                    // SystemAdmin có thể cập nhật tài khoản của bất kỳ user nào
+                    bankAccount = await _bankAccountService.GetBankAccountByIdForAdminAsync(id);
+                    if (bankAccount == null)
+                        return NotFound(new { message = "Tài khoản ngân hàng không tồn tại." });
+                    targetUserId = bankAccount.UserId;
+                }
+                else
+                {
+                    // Customer/EnterpriseAdmin chỉ có thể cập nhật tài khoản của chính mình
+                    bankAccount = await _bankAccountService.GetBankAccountByIdAsync(id, userId.Value);
+                    if (bankAccount == null)
+                        return NotFound(new { message = "Tài khoản ngân hàng không tồn tại." });
+                    
+                    // Kiểm tra quyền: chỉ có thể cập nhật tài khoản của chính mình
+                    if (bankAccount.UserId != userId.Value)
+                    {
+                        return Forbid("Bạn không có quyền cập nhật tài khoản ngân hàng này.");
+                    }
+                    targetUserId = userId.Value;
+                }
+                
+                var updatedAccount = await _bankAccountService.UpdateBankAccountAsync(id, targetUserId, dto);
                 if (updatedAccount == null)
                     return NotFound(new { message = "Tài khoản ngân hàng không tồn tại." });
                 
@@ -244,7 +271,9 @@ namespace GiaLaiOCOP.Api.Controllers
             }
         }
 
-        // DELETE: api/bankaccount/{id} - Xóa tài khoản ngân hàng (CHỈ SystemAdmin)
+        // DELETE: api/bankaccount/{id} - Xóa tài khoản ngân hàng
+        // Customer/EnterpriseAdmin: chỉ có thể xóa tài khoản của chính mình
+        // SystemAdmin: có thể xóa tài khoản của bất kỳ user nào
         [HttpDelete("{id}")]
         [ProducesResponseType(204)]
         [ProducesResponseType(404)]
@@ -258,19 +287,36 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             var role = GetUserRoleFromToken();
-            if (role != "SystemAdmin")
-            {
-                return Forbid("Chỉ SystemAdmin mới có thể xóa tài khoản ngân hàng.");
-            }
 
             try
             {
-                // SystemAdmin có thể xóa tài khoản của bất kỳ user nào
-                var bankAccount = await _bankAccountService.GetBankAccountByIdForAdminAsync(id);
-                if (bankAccount == null)
-                    return NotFound(new { message = "Tài khoản ngân hàng không tồn tại." });
+                BankAccountDto? bankAccount;
+                int targetUserId;
+                
+                if (role == "SystemAdmin")
+                {
+                    // SystemAdmin có thể xóa tài khoản của bất kỳ user nào
+                    bankAccount = await _bankAccountService.GetBankAccountByIdForAdminAsync(id);
+                    if (bankAccount == null)
+                        return NotFound(new { message = "Tài khoản ngân hàng không tồn tại." });
+                    targetUserId = bankAccount.UserId;
+                }
+                else
+                {
+                    // Customer/EnterpriseAdmin chỉ có thể xóa tài khoản của chính mình
+                    bankAccount = await _bankAccountService.GetBankAccountByIdAsync(id, userId.Value);
+                    if (bankAccount == null)
+                        return NotFound(new { message = "Tài khoản ngân hàng không tồn tại." });
+                    
+                    // Kiểm tra quyền: chỉ có thể xóa tài khoản của chính mình
+                    if (bankAccount.UserId != userId.Value)
+                    {
+                        return Forbid("Bạn không có quyền xóa tài khoản ngân hàng này.");
+                    }
+                    targetUserId = userId.Value;
+                }
 
-                var deleted = await _bankAccountService.DeleteBankAccountAsync(id, bankAccount.UserId);
+                var deleted = await _bankAccountService.DeleteBankAccountAsync(id, targetUserId);
                 if (!deleted)
                     return NotFound(new { message = "Tài khoản ngân hàng không tồn tại." });
 
@@ -283,7 +329,9 @@ namespace GiaLaiOCOP.Api.Controllers
             }
         }
 
-        // POST: api/bankaccount/{id}/set-default - Đặt làm tài khoản mặc định (CHỈ SystemAdmin)
+        // POST: api/bankaccount/{id}/set-default - Đặt làm tài khoản mặc định
+        // Customer/EnterpriseAdmin: chỉ có thể đặt mặc định cho tài khoản của chính mình
+        // SystemAdmin: có thể đặt mặc định cho tài khoản của bất kỳ user nào
         [HttpPost("{id}/set-default")]
         [ProducesResponseType(typeof(BankAccountDto), 200)]
         [ProducesResponseType(404)]
@@ -296,19 +344,36 @@ namespace GiaLaiOCOP.Api.Controllers
                 return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
 
             var role = GetUserRoleFromToken();
-            if (role != "SystemAdmin")
-            {
-                return Forbid("Chỉ SystemAdmin mới có thể đặt tài khoản mặc định.");
-            }
 
             try
             {
-                // SystemAdmin có thể đặt mặc định cho tài khoản của bất kỳ user nào
-                var bankAccount = await _bankAccountService.GetBankAccountByIdForAdminAsync(id);
-                if (bankAccount == null)
-                    return NotFound(new { message = "Tài khoản ngân hàng không tồn tại hoặc không hoạt động." });
+                BankAccountDto? bankAccount;
+                int targetUserId;
+                
+                if (role == "SystemAdmin")
+                {
+                    // SystemAdmin có thể đặt mặc định cho tài khoản của bất kỳ user nào
+                    bankAccount = await _bankAccountService.GetBankAccountByIdForAdminAsync(id);
+                    if (bankAccount == null)
+                        return NotFound(new { message = "Tài khoản ngân hàng không tồn tại hoặc không hoạt động." });
+                    targetUserId = bankAccount.UserId;
+                }
+                else
+                {
+                    // Customer/EnterpriseAdmin chỉ có thể đặt mặc định cho tài khoản của chính mình
+                    bankAccount = await _bankAccountService.GetBankAccountByIdAsync(id, userId.Value);
+                    if (bankAccount == null)
+                        return NotFound(new { message = "Tài khoản ngân hàng không tồn tại hoặc không hoạt động." });
+                    
+                    // Kiểm tra quyền: chỉ có thể đặt mặc định cho tài khoản của chính mình
+                    if (bankAccount.UserId != userId.Value)
+                    {
+                        return Forbid("Bạn không có quyền đặt mặc định cho tài khoản ngân hàng này.");
+                    }
+                    targetUserId = userId.Value;
+                }
 
-                var result = await _bankAccountService.SetDefaultBankAccountAsync(id, bankAccount.UserId);
+                var result = await _bankAccountService.SetDefaultBankAccountAsync(id, targetUserId);
                 if (result == null)
                     return NotFound(new { message = "Tài khoản ngân hàng không tồn tại hoặc không hoạt động." });
 

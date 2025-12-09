@@ -15,7 +15,13 @@ namespace GiaLaiOCOP.Api.Models
 
         public decimal TotalAmount { get; set; }
 
-        public string Status { get; set; } = "Pending"; // Pending, Processing, Shipped, Completed, Cancelled
+        public string Status { get; set; } = "Pending"; // Pending, Processing, Shipped, Completed, Cancelled, PendingCompletion
+
+        // 🔹 Thông tin xác nhận hoàn thành đơn hàng
+        public DateTime? CompletionRequestedAt { get; set; } // Thời gian EnterpriseAdmin yêu cầu xác nhận hoàn thành
+        public DateTime? CompletionApprovedAt { get; set; } // Thời gian SystemAdmin xác nhận hoàn thành
+        public DateTime? CompletionRejectedAt { get; set; } // Thời gian SystemAdmin từ chối
+        public string? CompletionRejectionReason { get; set; } // Lý do từ chối
 
         public string? ShippingAddress { get; set; } // Backward compatibility - địa chỉ string cũ
 

@@ -186,7 +186,30 @@ namespace GiaLaiOCOP.Api.Services
                     // Phê duyệt yêu cầu: Cộng/trừ tiền vào ví của người tạo yêu cầu
                     await ApproveRequestAsync(walletRequest, adminUserId);
                     
-                    // Lưu tất cả thay đổi (wallet balance, wallet transaction, wallet request status)
+                    // Tạo notification cho user về việc yêu cầu được phê duyệt
+                    var notificationType = walletRequest.Type == "deposit" ? "wallet_deposit" : "wallet_withdraw";
+                    var notificationTitle = walletRequest.Type == "deposit" 
+                        ? $"Yêu cầu nạp tiền #{walletRequest.Id} đã được phê duyệt"
+                        : $"Yêu cầu rút tiền #{walletRequest.Id} đã được phê duyệt";
+                    var notificationMessage = walletRequest.Type == "deposit"
+                        ? $"Yêu cầu nạp tiền của bạn với số tiền {walletRequest.Amount:N0} VND đã được SystemAdmin phê duyệt. Số tiền đã được cộng vào ví của bạn."
+                        : $"Yêu cầu rút tiền của bạn với số tiền {walletRequest.Amount:N0} VND đã được SystemAdmin phê duyệt. Số tiền đã được trừ khỏi ví và sẽ được chuyển đến tài khoản ngân hàng của bạn.";
+
+                    // Xác định link dựa trên role của user
+                    var userRole = walletRequest.User?.Role ?? (await _context.Users.FindAsync(walletRequest.UserId))?.Role;
+                    var notificationLink = userRole == "EnterpriseAdmin" ? "/enterprise-admin" : "/wallet";
+
+                    _context.Notifications.Add(new Notification
+                    {
+                        Type = notificationType,
+                        Title = notificationTitle,
+                        Message = notificationMessage,
+                        UserId = walletRequest.UserId,
+                        Link = notificationLink,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    
+                    // Lưu tất cả thay đổi (wallet balance, wallet transaction, wallet request status, notification)
                     await _context.SaveChangesAsync();
                     await dbTransaction.CommitAsync();
 
@@ -208,6 +231,30 @@ namespace GiaLaiOCOP.Api.Services
                     walletRequest.UpdatedAt = DateTime.UtcNow;
 
                     _context.WalletRequests.Update(walletRequest);
+
+                    // Tạo notification cho user về việc yêu cầu bị từ chối
+                    var notificationType = walletRequest.Type == "deposit" ? "wallet_deposit_rejected" : "wallet_withdraw_rejected";
+                    var notificationTitle = walletRequest.Type == "deposit"
+                        ? $"Yêu cầu nạp tiền #{walletRequest.Id} đã bị từ chối"
+                        : $"Yêu cầu rút tiền #{walletRequest.Id} đã bị từ chối";
+                    var notificationMessage = walletRequest.Type == "deposit"
+                        ? $"Yêu cầu nạp tiền của bạn với số tiền {walletRequest.Amount:N0} VND đã bị SystemAdmin từ chối. Lý do: {processRequest.RejectionReason}"
+                        : $"Yêu cầu rút tiền của bạn với số tiền {walletRequest.Amount:N0} VND đã bị SystemAdmin từ chối. Lý do: {processRequest.RejectionReason}";
+
+                    // Xác định link dựa trên role của user
+                    var userRoleReject = walletRequest.User?.Role ?? (await _context.Users.FindAsync(walletRequest.UserId))?.Role;
+                    var notificationLinkReject = userRoleReject == "EnterpriseAdmin" ? "/enterprise-admin" : "/wallet";
+
+                    _context.Notifications.Add(new Notification
+                    {
+                        Type = notificationType,
+                        Title = notificationTitle,
+                        Message = notificationMessage,
+                        UserId = walletRequest.UserId,
+                        Link = notificationLinkReject,
+                        CreatedAt = DateTime.UtcNow
+                    });
+
                     await _context.SaveChangesAsync();
                     await dbTransaction.CommitAsync();
 

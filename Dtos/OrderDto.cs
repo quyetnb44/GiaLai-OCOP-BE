@@ -22,6 +22,12 @@ namespace GiaLaiOCOP.Api.Dtos
         public DateTime? DeliveredAt { get; set; }
         public string? DeliveryNotes { get; set; }
 
+        // 🔹 Thông tin xác nhận hoàn thành đơn hàng
+        public DateTime? CompletionRequestedAt { get; set; }
+        public DateTime? CompletionApprovedAt { get; set; }
+        public DateTime? CompletionRejectedAt { get; set; }
+        public string? CompletionRejectionReason { get; set; }
+
         // 🔹 Thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
         public CustomerInfoDto? Customer { get; set; }
 
