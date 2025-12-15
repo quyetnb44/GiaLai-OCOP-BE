@@ -1,6 +1,0 @@
-@GiaLaiOCOP.Api_HostAddress = http://localhost:5003
-
-GET {{GiaLaiOCOP.Api_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

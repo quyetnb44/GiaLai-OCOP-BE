@@ -99,29 +99,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// 🔹 Add CORS
+// 🔹 Add CORS - Luôn đọc từ appsettings.json
 builder.Services.AddCors(options =>
 {
-    if (builder.Environment.IsDevelopment())
+    // Đọc allowed origins từ configuration
+    var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+                       ?? new[] { "http://localhost:3000", "https://gialai-ocop-frontend-2.onrender.com" };
+    
+    options.AddPolicy("AllowAll", policy =>
     {
-        // Development: Cho phép tất cả origins
-        options.AddPolicy("AllowAll", policy =>
-            policy.AllowAnyOrigin()
-                  .AllowAnyHeader()
-                  .AllowAnyMethod());
-    }
-    else
-    {
-        // Production: Chỉ cho phép origins cụ thể
-        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
-                           ?? new[] { "https://gialai-ocop-frontend-2.onrender.com" };
-        
-        options.AddPolicy("AllowAll", policy =>
-            policy.WithOrigins(allowedOrigins)
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials()); // Frontend uses credentials: "omit" so this is compatible
-    }
+        policy.WithOrigins(allowedOrigins)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
 });
 
 // 🔹 Add Email Service
@@ -267,6 +258,7 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/uploads/documents"
 });
 
+app.UseCors("AllowAll");  
 // 6. Authentication (phải đặt trước Authorization)
 app.UseAuthentication();
 
