@@ -391,7 +391,7 @@ namespace GiaLaiOCOP.Api.Controllers
         private static ProductDto MapProductToDto(Product product)
         {
             // 🔹 Sử dụng AverageRating từ database thay vì tính toán động
-            return new ProductDto
+            var dto = new ProductDto
             {
                 Id = product.Id,
                 Name = product.Name,
@@ -409,6 +409,20 @@ namespace GiaLaiOCOP.Api.Controllers
                 ApprovedAt = product.ApprovedAt,
                 ApprovedByUserId = product.ApprovedByUserId
             };
+
+            // 🔹 Map Enterprise info nếu có (chỉ map các field cần thiết để tránh circular reference)
+            if (product.Enterprise != null)
+            {
+                dto.Enterprise = new EnterpriseDto
+                {
+                    Id = product.Enterprise.Id,
+                    Name = product.Enterprise.Name,
+                    ImageUrl = product.Enterprise.ImageUrl,
+                    // Chỉ map các field cần thiết, không map Products để tránh circular reference
+                };
+            }
+
+            return dto;
         }
     }
 
