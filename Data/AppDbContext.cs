@@ -35,6 +35,7 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<WalletTransaction> WalletTransactions { get; set; }
         public DbSet<WalletRequest> WalletRequests { get; set; }
         public DbSet<BankAccount> BankAccounts { get; set; }
+        public DbSet<OrderEnterpriseStatus> OrderEnterpriseStatuses { get; set; }
 
 
 
@@ -326,6 +327,25 @@ namespace GiaLaiOCOP.Api.Data
                 .HasIndex(ba => new { ba.UserId, ba.IsDefault })
                 .IsUnique()
                 .HasFilter("\"IsDefault\" = true");
+
+            // 🟩 Cấu hình quan hệ OrderEnterpriseStatus - Order (n-1)
+            modelBuilder.Entity<OrderEnterpriseStatus>()
+                .HasOne(oes => oes.Order)
+                .WithMany()
+                .HasForeignKey(oes => oes.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🟩 Cấu hình quan hệ OrderEnterpriseStatus - Enterprise (n-1)
+            modelBuilder.Entity<OrderEnterpriseStatus>()
+                .HasOne(oes => oes.Enterprise)
+                .WithMany()
+                .HasForeignKey(oes => oes.EnterpriseId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // 🟩 Đảm bảo mỗi Order-Enterprise chỉ có một OrderEnterpriseStatus
+            modelBuilder.Entity<OrderEnterpriseStatus>()
+                .HasIndex(oes => new { oes.OrderId, oes.EnterpriseId })
+                .IsUnique();
         }
     }
 }

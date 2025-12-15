@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using System;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 
 namespace GiaLaiOCOP.Api.Controllers
 {
@@ -83,6 +84,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     .Include(o => o.User)
                         .ThenInclude(u => u.Ward) // Include Ward để lấy địa chỉ
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Enterprise) // 🔹 Include Enterprise để lấy EnterpriseName và ImageUrl
                     .Include(o => o.Payments)
                     .Where(o => o.UserId == userId.Value);
             }
@@ -100,6 +102,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     .Include(o => o.User)
                         .ThenInclude(u => u.Ward) // Include Ward để lấy địa chỉ
                     .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Enterprise) // 🔹 Include Enterprise để lấy EnterpriseName
                     .Include(o => o.Payments)
                     .Where(o => o.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId));
             }
@@ -133,6 +136,17 @@ namespace GiaLaiOCOP.Api.Controllers
                 .Take(pageSize)
                 .ToListAsync();
             
+            // 🔹 Lấy enterpriseId cho EnterpriseAdmin (để filter orderItems)
+            int? currentEnterpriseId = null;
+            if (role == "EnterpriseAdmin")
+            {
+                var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
+                if (enterpriseId > 0)
+                {
+                    currentEnterpriseId = enterpriseId;
+                }
+            }
+
             // Map sang DTOs (sau khi đã load dữ liệu từ database)
             var orderDtos = orders.Select(o =>
             {
@@ -148,6 +162,14 @@ namespace GiaLaiOCOP.Api.Controllers
                 {
                     // 🔹 Lấy địa chỉ từ ShippingAddress (string) - backward compatibility
                     shippingAddress = o.ShippingAddress;
+                }
+
+                // 🔹 Filter orderItems: Nếu là EnterpriseAdmin, chỉ trả về orderItems thuộc enterprise của họ
+                var orderItemsToReturn = o.OrderItems.AsEnumerable();
+                if (currentEnterpriseId.HasValue)
+                {
+                    // Chỉ lấy orderItems có Product thuộc enterprise này
+                    orderItemsToReturn = o.OrderItems.Where(oi => oi.Product != null && oi.Product.EnterpriseId == currentEnterpriseId.Value);
                 }
 
                 return new OrderDto
@@ -180,13 +202,18 @@ namespace GiaLaiOCOP.Api.Controllers
                         AvatarUrl = o.User.AvatarUrl,
                         Address = BuildCustomerAddress(o.User) // Xây dựng địa chỉ đầy đủ (sau khi đã load từ DB)
                     } : null,
-                    OrderItems = o.OrderItems.Select(oi => new OrderItemDto
+                    OrderItems = orderItemsToReturn.Select(oi => new OrderItemDto
                     {
                         Id = oi.Id,
                         OrderId = oi.OrderId,
                         ProductId = oi.ProductId,
                         Quantity = oi.Quantity,
-                        Price = oi.Price
+                        Price = oi.Price,
+                        EnterpriseId = oi.Product?.EnterpriseId,
+                        EnterpriseName = oi.Product?.Enterprise?.Name,
+                        EnterpriseImageUrl = oi.Product?.Enterprise?.ImageUrl,
+                        ProductName = oi.Product?.Name,
+                        ProductImageUrl = oi.Product?.ImageUrl
                     }).ToList(),
                     Payments = o.Payments.Select(MapPaymentToDto).ToList()
                 };
@@ -219,6 +246,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     .ThenInclude(u => u.Ward) // Include Ward để lấy địa chỉ
                 .Include(o => o.ShippingAddressDetail) // 🔹 Load ShippingAddressDetail từ database
                 .Include(o => o.OrderItems).ThenInclude(oi => oi.Product)
+                    .ThenInclude(p => p.Enterprise) // 🔹 Include Enterprise để lấy EnterpriseName và ImageUrl
                 .Include(o => o.Payments)
                     .ThenInclude(p => p.Enterprise)
                 .FirstOrDefaultAsync(o => o.Id == id);
@@ -264,6 +292,18 @@ namespace GiaLaiOCOP.Api.Controllers
                 await _context.Entry(order).Reference(o => o.User).LoadAsync();
             }
 
+            // 🔹 Filter orderItems: Nếu là EnterpriseAdmin, chỉ trả về orderItems thuộc enterprise của họ
+            var orderItemsToReturn = order.OrderItems.AsEnumerable();
+            if (role == "EnterpriseAdmin")
+            {
+                var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
+                if (enterpriseId > 0)
+                {
+                    // Chỉ lấy orderItems có Product thuộc enterprise này
+                    orderItemsToReturn = order.OrderItems.Where(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId);
+                }
+            }
+
             var orderDto = new OrderDto
             {
                 Id = order.Id,
@@ -294,13 +334,18 @@ namespace GiaLaiOCOP.Api.Controllers
                     AvatarUrl = order.User.AvatarUrl,
                     Address = BuildCustomerAddress(order.User) // Xây dựng địa chỉ đầy đủ
                 } : null,
-                OrderItems = order.OrderItems.Select(oi => new OrderItemDto
+                OrderItems = orderItemsToReturn.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
                     OrderId = oi.OrderId,
                     ProductId = oi.ProductId,
                     Quantity = oi.Quantity,
-                    Price = oi.Price
+                    Price = oi.Price,
+                    EnterpriseId = oi.Product?.EnterpriseId,
+                    EnterpriseName = oi.Product?.Enterprise?.Name,
+                    EnterpriseImageUrl = oi.Product?.Enterprise?.ImageUrl,
+                    ProductName = oi.Product?.Name,
+                    ProductImageUrl = oi.Product?.ImageUrl
                 }).ToList(),
                 Payments = order.Payments.Select(MapPaymentToDto).ToList()
             };
@@ -405,6 +450,25 @@ namespace GiaLaiOCOP.Api.Controllers
                 order.TotalAmount = total;
                 await _context.SaveChangesAsync();
 
+                // 🔹 Tạo OrderEnterpriseStatus cho mỗi enterprise có sản phẩm trong đơn hàng
+                var enterpriseIds = orderItemsToCreate
+                    .Select(oi => products[oi.ProductId].EnterpriseId)
+                    .Distinct()
+                    .ToList();
+
+                foreach (var enterpriseId in enterpriseIds)
+                {
+                    var enterpriseStatus = new OrderEnterpriseStatus
+                    {
+                        OrderId = order.Id,
+                        EnterpriseId = enterpriseId,
+                        Status = "Pending",
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    _context.OrderEnterpriseStatuses.Add(enterpriseStatus);
+                }
+
+                await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
             }
             catch
@@ -416,6 +480,16 @@ namespace GiaLaiOCOP.Api.Controllers
             // 🔹 Reload để lấy OrderItems và Payments đã lưu
             await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
             await _context.Entry(order).Collection(o => o.Payments).LoadAsync();
+            
+            // Load Product và Enterprise cho mỗi OrderItem
+            foreach (var item in order.OrderItems)
+            {
+                await _context.Entry(item).Reference(oi => oi.Product).LoadAsync();
+                if (item.Product != null)
+                {
+                    await _context.Entry(item.Product).Reference(p => p.Enterprise).LoadAsync();
+                }
+            }
             
             // Load Enterprise cho mỗi payment
             foreach (var payment in order.Payments)
@@ -449,7 +523,12 @@ namespace GiaLaiOCOP.Api.Controllers
                     OrderId = oi.OrderId,
                     ProductId = oi.ProductId,
                     Quantity = oi.Quantity,
-                    Price = oi.Price
+                    Price = oi.Price,
+                    EnterpriseId = oi.Product?.EnterpriseId,
+                    EnterpriseName = oi.Product?.Enterprise?.Name,
+                    EnterpriseImageUrl = oi.Product?.Enterprise?.ImageUrl,
+                    ProductName = oi.Product?.Name,
+                    ProductImageUrl = oi.Product?.ImageUrl
                 }).ToList(),
                 Payments = order.Payments.Select(MapPaymentToDto).ToList()
             };
@@ -520,12 +599,104 @@ namespace GiaLaiOCOP.Api.Controllers
                 // EnterpriseAdmin không thể set status = "Cancelled" (chỉ Customer mới có thể hủy)
                 if (dto.Status == "Cancelled")
                     return Forbid("EnterpriseAdmin không thể hủy đơn hàng. Chỉ Customer mới có thể hủy đơn hàng.");
+
+                // 🔹 Cập nhật trạng thái của enterprise này trong OrderEnterpriseStatus
+                var enterpriseStatus = await _context.OrderEnterpriseStatuses
+                    .FirstOrDefaultAsync(oes => oes.OrderId == id && oes.EnterpriseId == enterpriseId);
+
+                if (enterpriseStatus == null)
+                {
+                    // Tạo mới nếu chưa có
+                    enterpriseStatus = new OrderEnterpriseStatus
+                    {
+                        OrderId = id,
+                        EnterpriseId = enterpriseId,
+                        Status = dto.Status,
+                        UpdatedAt = DateTime.UtcNow,
+                        UpdatedBy = userId.Value
+                    };
+                    _context.OrderEnterpriseStatuses.Add(enterpriseStatus);
+                }
+                else
+                {
+                    // Cập nhật nếu đã có
+                    enterpriseStatus.Status = dto.Status;
+                    enterpriseStatus.UpdatedAt = DateTime.UtcNow;
+                    enterpriseStatus.UpdatedBy = userId.Value;
+                }
+
+                await _context.SaveChangesAsync();
+
+                // 🔹 Kiểm tra xem tất cả các enterprise có orderItems trong đơn hàng đã cập nhật trạng thái chưa
+                var allEnterpriseIds = order.OrderItems
+                    .Where(oi => oi.Product != null)
+                    .Select(oi => oi.Product!.EnterpriseId)
+                    .Distinct()
+                    .ToList();
+
+                var allEnterpriseStatuses = await _context.OrderEnterpriseStatuses
+                    .Where(oes => oes.OrderId == id && allEnterpriseIds.Contains(oes.EnterpriseId))
+                    .ToListAsync();
+
+                // Kiểm tra xem tất cả các enterprise đã cập nhật trạng thái chưa
+                var allEnterprisesHaveStatus = allEnterpriseIds.All(eid => 
+                    allEnterpriseStatuses.Any(oes => oes.EnterpriseId == eid));
+
+                if (allEnterprisesHaveStatus)
+                {
+                    // Kiểm tra xem tất cả các enterprise đã cập nhật trạng thái giống nhau chưa
+                    var allHaveSameStatus = allEnterpriseStatuses.All(oes => oes.Status == dto.Status);
+
+                    if (allHaveSameStatus)
+                    {
+                        // Tất cả các enterprise đã cập nhật cùng trạng thái → Cập nhật trạng thái tổng thể của đơn hàng
+                        order.Status = dto.Status;
+                        await _context.SaveChangesAsync();
+                    }
+                    else
+                    {
+                        // Các enterprise có trạng thái khác nhau → Giữ trạng thái "Pending" cho đến khi tất cả cùng trạng thái
+                        // Chỉ cập nhật nếu tất cả đều đã chuyển sang trạng thái tiếp theo (ví dụ: tất cả đều "Processing")
+                        var statuses = allEnterpriseStatuses.Select(oes => oes.Status).Distinct().ToList();
+                        
+                        // Nếu tất cả đều đã chuyển sang cùng một trạng thái khác "Pending", thì cập nhật
+                        if (statuses.Count == 1 && statuses[0] != "Pending")
+                        {
+                            order.Status = statuses[0];
+                            await _context.SaveChangesAsync();
+                        }
+                        else
+                        {
+                            // Vẫn còn enterprise ở trạng thái "Pending" hoặc có nhiều trạng thái khác nhau → Giữ "Pending"
+                            if (order.Status != "Pending")
+                            {
+                                order.Status = "Pending";
+                                await _context.SaveChangesAsync();
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Chưa tất cả enterprise đã cập nhật → Giữ trạng thái "Pending"
+                    if (order.Status != "Pending")
+                    {
+                        order.Status = "Pending";
+                        await _context.SaveChangesAsync();
+                    }
+                }
+
+                return NoContent();
             }
-            // SystemAdmin có thể cập nhật bất kỳ status nào
+            // SystemAdmin có thể cập nhật bất kỳ status nào (cập nhật trực tiếp trạng thái tổng thể)
+            else if (role == "SystemAdmin")
+            {
+                order.Status = dto.Status;
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
 
-            order.Status = dto.Status;
-            await _context.SaveChangesAsync();
-
+            // Customer đã được xử lý ở trên
             return NoContent();
         }
 
@@ -574,8 +745,31 @@ namespace GiaLaiOCOP.Api.Controllers
             await _context.Entry(order).Reference(o => o.User).LoadAsync();
             await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
             await _context.Entry(order).Collection(o => o.Payments).LoadAsync();
+            
+            // Load Product và Enterprise cho OrderItems
+            foreach (var item in order.OrderItems)
+            {
+                await _context.Entry(item).Reference(oi => oi.Product).LoadAsync();
+                if (item.Product != null)
+                {
+                    await _context.Entry(item.Product).Reference(p => p.Enterprise).LoadAsync();
+                }
+            }
 
-            var orderDto = MapOrderToDto(order);
+            // Lấy enterpriseId nếu là EnterpriseAdmin (để filter orderItems trong DTO)
+            int? entIdForDto = null;
+            var currentRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            if (currentRole == "EnterpriseAdmin")
+            {
+                var currentUserId = await GetUserIdFromTokenAsync();
+                if (currentUserId.HasValue)
+                {
+                    var user = await _context.Users.FindAsync(currentUserId.Value);
+                    entIdForDto = user?.EnterpriseId;
+                }
+            }
+
+            var orderDto = MapOrderToDto(order, entIdForDto);
             return Ok(orderDto);
         }
 
@@ -660,14 +854,14 @@ namespace GiaLaiOCOP.Api.Controllers
                     .Distinct()
                     .ToList();
 
-                foreach (var enterpriseId in enterpriseIds)
+                foreach (var entId in enterpriseIds)
                 {
                     _context.Notifications.Add(new Notification
                     {
                         Type = "order_completion_approved",
                         Title = $"Đơn hàng #{order.Id} đã được xác nhận hoàn thành",
                         Message = $"Đơn hàng #{order.Id} đã được SystemAdmin xác nhận hoàn thành.",
-                        EnterpriseId = enterpriseId,
+                        EnterpriseId = entId,
                         OrderId = order.Id,
                         Link = $"/orders/{order.Id}",
                         CreatedAt = DateTime.UtcNow
@@ -694,14 +888,14 @@ namespace GiaLaiOCOP.Api.Controllers
                     .Distinct()
                     .ToList();
 
-                foreach (var enterpriseId in enterpriseIds)
+                foreach (var entId in enterpriseIds)
                 {
                     _context.Notifications.Add(new Notification
                     {
                         Type = "order_completion_rejected",
                         Title = $"Yêu cầu hoàn thành đơn hàng #{order.Id} bị từ chối",
                         Message = $"Yêu cầu hoàn thành đơn hàng #{order.Id} đã bị từ chối. Lý do: {dto.RejectionReason}",
-                        EnterpriseId = enterpriseId,
+                        EnterpriseId = entId,
                         OrderId = order.Id,
                         Link = $"/orders/{order.Id}",
                         CreatedAt = DateTime.UtcNow
@@ -715,8 +909,31 @@ namespace GiaLaiOCOP.Api.Controllers
             await _context.Entry(order).Reference(o => o.User).LoadAsync();
             await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
             await _context.Entry(order).Collection(o => o.Payments).LoadAsync();
+            
+            // Load Product và Enterprise cho OrderItems
+            foreach (var item in order.OrderItems)
+            {
+                await _context.Entry(item).Reference(oi => oi.Product).LoadAsync();
+                if (item.Product != null)
+                {
+                    await _context.Entry(item.Product).Reference(p => p.Enterprise).LoadAsync();
+                }
+            }
 
-            var orderDto = MapOrderToDto(order);
+            // Lấy enterpriseId nếu là EnterpriseAdmin
+            int? enterpriseId = null;
+            var currentRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            if (currentRole == "EnterpriseAdmin")
+            {
+                var currentUserId = await GetUserIdFromTokenAsync();
+                if (currentUserId.HasValue)
+                {
+                    enterpriseId = (await _context.Users.FindAsync(currentUserId.Value))?.EnterpriseId ?? 0;
+                    if (enterpriseId == 0) enterpriseId = null;
+                }
+            }
+
+            var orderDto = MapOrderToDto(order, enterpriseId);
             return Ok(orderDto);
         }
 
@@ -747,7 +964,8 @@ namespace GiaLaiOCOP.Api.Controllers
         }
 
         // 🔹 Helper method để map Order sang OrderDto
-        private OrderDto MapOrderToDto(Order order)
+        // enterpriseId: Nếu có, chỉ trả về orderItems thuộc enterprise này (cho EnterpriseAdmin)
+        private OrderDto MapOrderToDto(Order order, int? enterpriseId = null)
         {
             // 🔹 Lấy địa chỉ từ ShippingAddressDetail hoặc ShippingAddress (string)
             string? shippingAddress = null;
@@ -759,6 +977,14 @@ namespace GiaLaiOCOP.Api.Controllers
             else
             {
                 shippingAddress = order.ShippingAddress;
+            }
+
+            // 🔹 Filter orderItems: Nếu có enterpriseId, chỉ trả về orderItems thuộc enterprise này
+            var orderItemsToReturn = order.OrderItems.AsEnumerable();
+            if (enterpriseId.HasValue)
+            {
+                // Chỉ lấy orderItems có Product thuộc enterprise này
+                orderItemsToReturn = order.OrderItems.Where(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId.Value);
             }
 
             return new OrderDto
@@ -790,13 +1016,18 @@ namespace GiaLaiOCOP.Api.Controllers
                     AvatarUrl = order.User.AvatarUrl,
                     Address = BuildCustomerAddress(order.User)
                 } : null,
-                OrderItems = order.OrderItems.Select(oi => new OrderItemDto
+                OrderItems = orderItemsToReturn.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
                     OrderId = oi.OrderId,
                     ProductId = oi.ProductId,
                     Quantity = oi.Quantity,
-                    Price = oi.Price
+                    Price = oi.Price,
+                    EnterpriseId = oi.Product?.EnterpriseId,
+                    EnterpriseName = oi.Product?.Enterprise?.Name,
+                    EnterpriseImageUrl = oi.Product?.Enterprise?.ImageUrl,
+                    ProductName = oi.Product?.Name,
+                    ProductImageUrl = oi.Product?.ImageUrl
                 }).ToList(),
                 Payments = order.Payments.Select(MapPaymentToDto).ToList()
             };
@@ -946,25 +1177,49 @@ namespace GiaLaiOCOP.Api.Controllers
 
         private async Task CreateOrderNotificationsAsync(int orderId)
         {
-            var enterpriseIds = await _context.OrderItems
+            // Lấy thông tin orderItems với Product và Enterprise
+            var orderItems = await _context.OrderItems
+                .Include(oi => oi.Product)
+                    .ThenInclude(p => p.Enterprise)
                 .Where(oi => oi.OrderId == orderId && oi.Product != null)
-                .Select(oi => oi.Product!.EnterpriseId)
-                .Distinct()
                 .ToListAsync();
 
-            if (!enterpriseIds.Any())
+            if (!orderItems.Any())
                 return;
 
-            foreach (var enterpriseId in enterpriseIds)
+            // Nhóm orderItems theo EnterpriseId
+            var enterpriseGroups = orderItems
+                .Where(oi => oi.Product != null)
+                .GroupBy(oi => oi.Product!.EnterpriseId)
+                .ToList();
+
+            foreach (var group in enterpriseGroups)
             {
+                var enterpriseId = group.Key;
+                var itemsForEnterprise = group.ToList();
+                var productNames = itemsForEnterprise
+                    .Select(oi => oi.Product!.Name)
+                    .Take(3) // Chỉ lấy 3 sản phẩm đầu tiên để hiển thị
+                    .ToList();
+                
+                var productCount = itemsForEnterprise.Count;
+                var productList = productCount <= 3 
+                    ? string.Join(", ", productNames)
+                    : string.Join(", ", productNames) + $" và {productCount - 3} sản phẩm khác";
+
+                // Tìm EnterpriseAdmin của enterprise này để gửi notification
+                var enterpriseAdmin = await _context.Users
+                    .FirstOrDefaultAsync(u => u.EnterpriseId == enterpriseId && u.Role == "EnterpriseAdmin");
+
                 _context.Notifications.Add(new Notification
                 {
                     Type = "new_order",
                     Title = $"Đơn hàng mới #{orderId}",
-                    Message = "Bạn có đơn hàng mới cần xử lý.",
+                    Message = $"Bạn có đơn hàng mới với {productCount} sản phẩm: {productList}. Vui lòng xác nhận đơn hàng.",
                     EnterpriseId = enterpriseId,
+                    UserId = enterpriseAdmin?.Id, // Gửi cho EnterpriseAdmin cụ thể nếu có
                     OrderId = orderId,
-                    Link = $"/orders/{orderId}"
+                    Link = $"/enterprise-admin?tab=orders"
                 });
             }
 
