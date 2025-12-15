@@ -1085,6 +1085,17 @@ namespace GiaLaiOCOP.Api.Controllers
                     _context.Users.Add(user);
                     await _context.SaveChangesAsync();
 
+                    // 🔹 Tự động tạo ví cho user mới đăng ký qua Facebook
+                    var wallet = new Wallet
+                    {
+                        UserId = user.Id,
+                        Balance = 0,
+                        Currency = "VND",
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.Wallets.Add(wallet);
+                    await _context.SaveChangesAsync();
+
                     // Load Enterprise nếu có
                     if (user.EnterpriseId.HasValue)
                     {
