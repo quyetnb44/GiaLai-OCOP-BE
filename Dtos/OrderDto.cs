@@ -15,6 +15,7 @@ namespace GiaLaiOCOP.Api.Dtos
         public string PaymentMethod { get; set; } = string.Empty;
         public string PaymentStatus { get; set; } = string.Empty;
         public string? PaymentReference { get; set; }
+        public string? BankTransferRejectionReason { get; set; } // Lý do từ chối chuyển khoản
 
         // 🔹 Thông tin giao hàng
         public int? ShipperId { get; set; }

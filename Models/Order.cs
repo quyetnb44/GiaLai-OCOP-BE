@@ -38,8 +38,9 @@ namespace GiaLaiOCOP.Api.Models
 
         // 🔹 Thông tin thanh toán
         public string PaymentMethod { get; set; } = "COD"; // COD, BankTransfer
-        public string PaymentStatus { get; set; } = "Pending"; // Pending, AwaitingTransfer, Paid, PartiallyPaid, Cancelled
+        public string PaymentStatus { get; set; } = "Pending"; // Pending, AwaitingTransfer, BankTransferConfirmed, BankTransferRejected, Paid, PartiallyPaid, Cancelled
         public string? PaymentReference { get; set; }
+        public string? BankTransferRejectionReason { get; set; } // Lý do từ chối chuyển khoản
 
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
 

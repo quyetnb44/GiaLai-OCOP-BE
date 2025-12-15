@@ -184,6 +184,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     PaymentMethod = o.PaymentMethod,
                     PaymentStatus = o.PaymentStatus,
                     PaymentReference = o.PaymentReference,
+                    BankTransferRejectionReason = o.BankTransferRejectionReason,
                     ShipperId = o.ShipperId,
                     ShippedAt = o.ShippedAt,
                     DeliveredAt = o.DeliveredAt,
@@ -316,6 +317,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentMethod = order.PaymentMethod,
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
+                BankTransferRejectionReason = order.BankTransferRejectionReason,
                 ShipperId = order.ShipperId,
                     ShippedAt = order.ShippedAt,
                     DeliveredAt = order.DeliveredAt,
@@ -432,7 +434,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 OrderDate = DateTime.UtcNow,
                 Status = "Pending",
                 PaymentMethod = paymentMethod,
-                PaymentStatus = "Pending" // Sẽ được cập nhật khi tạo Payment thực sự
+                PaymentStatus = paymentMethod == "BankTransfer" ? "AwaitingTransfer" : "Pending" // BankTransfer cần xét duyệt, COD là Pending
             };
 
             await using var transaction = await _context.Database.BeginTransactionAsync();
@@ -509,6 +511,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentMethod = order.PaymentMethod,
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
+                BankTransferRejectionReason = order.BankTransferRejectionReason,
                 ShipperId = order.ShipperId,
                 ShippedAt = order.ShippedAt,
                 DeliveredAt = order.DeliveredAt,
@@ -534,6 +537,12 @@ namespace GiaLaiOCOP.Api.Controllers
             };
 
             await CreateOrderNotificationsAsync(order.Id);
+
+            // 🔹 Nếu là BankTransfer, tạo notification cho SystemAdmin để xét duyệt chuyển khoản
+            if (paymentMethod == "BankTransfer")
+            {
+                await CreateBankTransferNotificationAsync(order.Id);
+            }
 
             return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, orderDto);
         }
@@ -773,6 +782,166 @@ namespace GiaLaiOCOP.Api.Controllers
             return Ok(orderDto);
         }
 
+        // 🔹 POST /api/orders/{id}/confirm-bank-transfer - SystemAdmin xác nhận hoặc từ chối chuyển khoản ngân hàng
+        [Authorize(Roles = "SystemAdmin")]
+        [HttpPost("{id}/confirm-bank-transfer")]
+        public async Task<ActionResult<OrderDto>> ConfirmBankTransfer(int id, [FromBody] ConfirmBankTransferDto dto)
+        {
+            var userId = await GetUserIdFromTokenAsync();
+            if (userId == null)
+                return Unauthorized("Không tìm thấy thông tin người dùng trong token.");
+
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                .Include(o => o.User)
+                .Include(o => o.Payments)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null)
+                return NotFound("Không tìm thấy đơn hàng.");
+
+            // Chỉ có thể xác nhận/chưa chuyển khoản khi paymentMethod là BankTransfer và paymentStatus là AwaitingTransfer hoặc BankTransferRejected
+            if (order.PaymentMethod != "BankTransfer")
+                return BadRequest("Đơn hàng này không sử dụng phương thức thanh toán chuyển khoản ngân hàng.");
+
+            if (order.PaymentStatus != "AwaitingTransfer" && order.PaymentStatus != "BankTransferRejected")
+                return BadRequest($"Chỉ có thể xác nhận chuyển khoản khi đơn hàng ở trạng thái AwaitingTransfer hoặc BankTransferRejected. Trạng thái hiện tại: {order.PaymentStatus}");
+
+            if (dto.Confirmed)
+            {
+                // Xác nhận đã chuyển khoản: Cập nhật PaymentStatus thành "BankTransferConfirmed"
+                order.PaymentStatus = "BankTransferConfirmed";
+                order.BankTransferRejectionReason = null; // Xóa lý do từ chối nếu có
+                
+                // Cập nhật tất cả Payments của đơn hàng này thành "Paid"
+                foreach (var payment in order.Payments.Where(p => p.Method == "BankTransfer"))
+                {
+                    payment.Status = "Paid";
+                    payment.PaidAt = DateTime.UtcNow;
+                }
+
+                await _context.SaveChangesAsync();
+
+                // Tạo notification cho Customer
+                _context.Notifications.Add(new Notification
+                {
+                    Type = "bank_transfer_confirmed",
+                    Title = $"Đã xác nhận chuyển khoản cho đơn hàng #{order.Id}",
+                    Message = $"SystemAdmin đã xác nhận đã nhận được chuyển khoản cho đơn hàng #{order.Id}. Đơn hàng sẽ được xử lý tiếp theo.",
+                    UserId = order.UserId,
+                    OrderId = order.Id,
+                    Link = $"/orders/{order.Id}",
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // Tạo notification cho EnterpriseAdmin của các enterprise có sản phẩm trong đơn hàng
+                var enterpriseIds = order.OrderItems
+                    .Where(oi => oi.Product != null)
+                    .Select(oi => oi.Product!.EnterpriseId)
+                    .Distinct()
+                    .ToList();
+
+                foreach (var enterpriseId in enterpriseIds)
+                {
+                    var enterpriseAdmin = await _context.Users
+                        .FirstOrDefaultAsync(u => u.EnterpriseId == enterpriseId && u.Role == "EnterpriseAdmin");
+
+                    if (enterpriseAdmin != null)
+                    {
+                        _context.Notifications.Add(new Notification
+                        {
+                            Type = "bank_transfer_confirmed",
+                            Title = $"Đã xác nhận chuyển khoản cho đơn hàng #{order.Id}",
+                            Message = $"SystemAdmin đã xác nhận đã nhận được chuyển khoản cho đơn hàng #{order.Id}. Bạn có thể tiếp tục xử lý đơn hàng.",
+                            UserId = enterpriseAdmin.Id,
+                            EnterpriseId = enterpriseId,
+                            OrderId = order.Id,
+                            Link = $"/enterprise-admin?tab=orders",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+            }
+            else
+            {
+                // Chưa chuyển khoản: Cập nhật PaymentStatus thành "BankTransferRejected" và lưu lý do
+                if (string.IsNullOrWhiteSpace(dto.RejectionReason))
+                    return BadRequest("Vui lòng nhập lý do chưa chuyển khoản.");
+
+                order.PaymentStatus = "BankTransferRejected";
+                order.BankTransferRejectionReason = dto.RejectionReason.Trim();
+                
+                await _context.SaveChangesAsync();
+
+                // Tạo notification cho Customer
+                _context.Notifications.Add(new Notification
+                {
+                    Type = "bank_transfer_rejected",
+                    Title = $"Chưa nhận được chuyển khoản cho đơn hàng #{order.Id}",
+                    Message = $"SystemAdmin chưa nhận được chuyển khoản cho đơn hàng #{order.Id}. Lý do: {dto.RejectionReason}. Vui lòng kiểm tra lại và thực hiện chuyển khoản.",
+                    UserId = order.UserId,
+                    OrderId = order.Id,
+                    Link = $"/payment/{order.Id}",
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // Tạo notification cho EnterpriseAdmin
+                var enterpriseIds = order.OrderItems
+                    .Where(oi => oi.Product != null)
+                    .Select(oi => oi.Product!.EnterpriseId)
+                    .Distinct()
+                    .ToList();
+
+                foreach (var enterpriseId in enterpriseIds)
+                {
+                    var enterpriseAdmin = await _context.Users
+                        .FirstOrDefaultAsync(u => u.EnterpriseId == enterpriseId && u.Role == "EnterpriseAdmin");
+
+                    if (enterpriseAdmin != null)
+                    {
+                        _context.Notifications.Add(new Notification
+                        {
+                            Type = "bank_transfer_rejected",
+                            Title = $"Chưa nhận được chuyển khoản cho đơn hàng #{order.Id}",
+                            Message = $"SystemAdmin chưa nhận được chuyển khoản cho đơn hàng #{order.Id}. Lý do: {dto.RejectionReason}. Đơn hàng sẽ được xử lý sau khi nhận được chuyển khoản.",
+                            UserId = enterpriseAdmin.Id,
+                            EnterpriseId = enterpriseId,
+                            OrderId = order.Id,
+                            Link = $"/enterprise-admin?tab=orders",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            // Reload order để trả về đầy đủ thông tin
+            await _context.Entry(order).Reference(o => o.User).LoadAsync();
+            await _context.Entry(order).Collection(o => o.OrderItems).LoadAsync();
+            await _context.Entry(order).Collection(o => o.Payments).LoadAsync();
+            
+            // Load Product và Enterprise cho OrderItems
+            foreach (var item in order.OrderItems)
+            {
+                await _context.Entry(item).Reference(oi => oi.Product).LoadAsync();
+                if (item.Product != null)
+                {
+                    await _context.Entry(item.Product).Reference(p => p.Enterprise).LoadAsync();
+                }
+            }
+
+            // Load Enterprise cho Payments
+            foreach (var payment in order.Payments)
+            {
+                await _context.Entry(payment).Reference(p => p.Enterprise).LoadAsync();
+            }
+
+            var orderDto = MapOrderToDto(order);
+            return Ok(orderDto);
+        }
+
         // 🔹 POST /api/orders/{id}/approve-completion - SystemAdmin xác nhận hoặc từ chối hoàn thành đơn hàng
         [Authorize(Roles = "SystemAdmin")]
         [HttpPost("{id}/approve-completion")]
@@ -937,6 +1106,31 @@ namespace GiaLaiOCOP.Api.Controllers
             return Ok(orderDto);
         }
 
+        // 🔹 Helper method để tạo notification khi có đơn hàng BankTransfer cần xét duyệt
+        private async Task CreateBankTransferNotificationAsync(int orderId)
+        {
+            // Tạo notification cho SystemAdmin
+            var systemAdmins = await _context.Users
+                .Where(u => u.Role == "SystemAdmin")
+                .ToListAsync();
+
+            foreach (var admin in systemAdmins)
+            {
+                _context.Notifications.Add(new Notification
+                {
+                    Type = "bank_transfer_pending",
+                    Title = $"Đơn hàng #{orderId} cần xét duyệt chuyển khoản",
+                    Message = $"Có đơn hàng #{orderId} thanh toán bằng chuyển khoản ngân hàng cần được xét duyệt. Vui lòng kiểm tra và xác nhận.",
+                    UserId = admin.Id,
+                    OrderId = orderId,
+                    Link = $"/admin?tab=order-management",
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            await _context.SaveChangesAsync();
+        }
+
         // 🔹 Helper method để tạo notification khi EnterpriseAdmin request completion
         private async Task CreateCompletionRequestNotificationAsync(int orderId, int enterpriseId)
         {
@@ -999,6 +1193,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentMethod = order.PaymentMethod,
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
+                BankTransferRejectionReason = order.BankTransferRejectionReason,
                 ShipperId = order.ShipperId,
                 ShippedAt = order.ShippedAt,
                 DeliveredAt = order.DeliveredAt,
@@ -1335,6 +1530,14 @@ namespace GiaLaiOCOP.Api.Controllers
     {
         [System.ComponentModel.DataAnnotations.Required]
         public bool Approved { get; set; }
+        public string? RejectionReason { get; set; }
+    }
+
+    // 🔹 DTO cho Confirm Bank Transfer (SystemAdmin)
+    public class ConfirmBankTransferDto
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public bool Confirmed { get; set; }
         public string? RejectionReason { get; set; }
     }
 }
