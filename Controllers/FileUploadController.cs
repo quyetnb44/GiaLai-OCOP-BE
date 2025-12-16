@@ -81,7 +81,9 @@ namespace GiaLaiOCOP.Api.Controllers
 
             if (normalizedRole == "customer" || normalizedRole == "user")
             {
+                // Cho phép khách đang đăng ký cung cấp logo doanh nghiệp tương lai
                 return normalizedFolder.Contains("users") ||
+                       normalizedFolder.Contains("enterprises") ||
                        normalizedFolder.Contains("gialaiocop/images") ||
                        string.IsNullOrWhiteSpace(normalizedFolder);
             }
@@ -114,7 +116,7 @@ namespace GiaLaiOCOP.Api.Controllers
             if (!IsAllowedToUploadToFolder(userRole, folder))
             {
                 _logger.LogWarning("User role {Role} không có quyền upload vào folder {Folder}", userRole, folder);
-                return Forbid("Bạn không có quyền upload ảnh vào folder này. Vui lòng liên hệ quản trị viên để được cấp quyền.");
+                return StatusCode(StatusCodes.Status403Forbidden, "Bạn không có quyền upload ảnh vào folder này. Vui lòng liên hệ quản trị viên để được cấp quyền.");
             }
 
             try
@@ -156,7 +158,7 @@ namespace GiaLaiOCOP.Api.Controllers
             if (!IsAllowedToUploadToFolder(userRole, folder))
             {
                 _logger.LogWarning("User role {Role} không có quyền upload vào folder {Folder}", userRole, folder);
-                return Forbid("Bạn không có quyền upload ảnh vào folder này. Vui lòng liên hệ quản trị viên để được cấp quyền.");
+                return StatusCode(StatusCodes.Status403Forbidden, "Bạn không có quyền upload ảnh vào folder này. Vui lòng liên hệ quản trị viên để được cấp quyền.");
             }
 
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
@@ -238,7 +240,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             var user = await _context.Users.FindAsync(userId.Value);
             if (user?.EnterpriseId == null)
-                return Forbid("Bạn không thuộc doanh nghiệp nào.");
+                return StatusCode(StatusCodes.Status403Forbidden, "Bạn không thuộc doanh nghiệp nào.");
 
             try
             {
