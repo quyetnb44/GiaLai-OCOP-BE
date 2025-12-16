@@ -77,12 +77,12 @@ namespace GiaLaiOCOP.Api.Services
                     // Remove any prefix if present (e.g., "NEXT_PUBLIC_GOOGLE_CLIENT_ID=")
                     googleClientId = googleClientId.Replace("NEXT_PUBLIC_GOOGLE_CLIENT_ID=", "").Trim();
                     
-                    if (tokenInfo.Audience != googleClientId)
+                    if (tokenInfo.Aud != googleClientId)
                     {
-                        _logger.LogWarning($"Google token audience mismatch. Expected: {googleClientId}, Got: {tokenInfo.Audience}");
+                        _logger.LogWarning($"Google token audience mismatch. Expected: {googleClientId}, Got: {tokenInfo.Aud}");
                         return null;
                     }
-                    _logger.LogInformation($"Google token audience verified: {tokenInfo.Audience}");
+                    _logger.LogInformation($"Google token audience verified: {tokenInfo.Aud}");
                 }
 
                 var userInfo = new SocialUserInfo
@@ -222,7 +222,7 @@ namespace GiaLaiOCOP.Api.Services
             public string? Email { get; set; }
             public string? Name { get; set; }
             public string? Picture { get; set; }
-            public string? Audience { get; set; } // Client ID
+            public string? Aud { get; set; } // Client ID
         }
 
         private class FacebookUserInfo
