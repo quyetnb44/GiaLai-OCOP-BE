@@ -36,6 +36,22 @@ namespace GiaLaiOCOP.Api.Dtos
         public List<OrderItemDto>? OrderItems { get; set; }
 
         public List<PaymentDto>? Payments { get; set; }
+
+        // 🔹 Trạng thái riêng của từng Enterprise trong đơn hàng (để SystemAdmin xem)
+        public List<OrderEnterpriseStatusDto>? EnterpriseStatuses { get; set; }
+    }
+
+    // 🔹 DTO cho trạng thái riêng của từng Enterprise
+    public class OrderEnterpriseStatusDto
+    {
+        public int Id { get; set; }
+        public int OrderId { get; set; }
+        public int EnterpriseId { get; set; }
+        public string? EnterpriseName { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public DateTime? UpdatedAt { get; set; }
+        public int? UpdatedBy { get; set; }
+        public string? Notes { get; set; }
     }
 
     // 🔹 Thông tin Customer cơ bản (để tránh circular reference)

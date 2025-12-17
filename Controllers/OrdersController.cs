@@ -131,9 +131,19 @@ namespace GiaLaiOCOP.Api.Controllers
                 .Include(o => o.ShippingAddressDetail) // 🔹 Load ShippingAddressDetail từ database
                 .Include(o => o.Payments)
                     .ThenInclude(p => p.Enterprise)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Enterprise)
                 .OrderByDescending(o => o.OrderDate)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
+                .ToListAsync();
+
+            // 🔹 Load OrderEnterpriseStatus cho tất cả orders
+            var orderIds = orders.Select(o => o.Id).ToList();
+            var enterpriseStatuses = await _context.OrderEnterpriseStatuses
+                .Include(oes => oes.Enterprise)
+                .Where(oes => orderIds.Contains(oes.OrderId))
                 .ToListAsync();
             
             // 🔹 Lấy enterpriseId cho EnterpriseAdmin (để filter orderItems)
@@ -216,7 +226,23 @@ namespace GiaLaiOCOP.Api.Controllers
                         ProductName = oi.Product?.Name,
                         ProductImageUrl = oi.Product?.ImageUrl
                     }).ToList(),
-                    Payments = o.Payments.Select(MapPaymentToDto).ToList()
+                    Payments = o.Payments.Select(MapPaymentToDto).ToList(),
+                    // 🔹 Thêm trạng thái riêng của từng Enterprise (chỉ cho SystemAdmin)
+                    EnterpriseStatuses = role == "SystemAdmin" 
+                        ? enterpriseStatuses
+                            .Where(oes => oes.OrderId == o.Id)
+                            .Select(oes => new OrderEnterpriseStatusDto
+                            {
+                                Id = oes.Id,
+                                OrderId = oes.OrderId,
+                                EnterpriseId = oes.EnterpriseId,
+                                EnterpriseName = oes.Enterprise?.Name,
+                                Status = oes.Status,
+                                UpdatedAt = oes.UpdatedAt,
+                                UpdatedBy = oes.UpdatedBy,
+                                Notes = oes.Notes
+                            }).ToList()
+                        : null
                 };
             }).ToList();
 
@@ -349,7 +375,24 @@ namespace GiaLaiOCOP.Api.Controllers
                     ProductName = oi.Product?.Name,
                     ProductImageUrl = oi.Product?.ImageUrl
                 }).ToList(),
-                Payments = order.Payments.Select(MapPaymentToDto).ToList()
+                Payments = order.Payments.Select(MapPaymentToDto).ToList(),
+                // 🔹 Thêm trạng thái riêng của từng Enterprise (chỉ cho SystemAdmin)
+                EnterpriseStatuses = role == "SystemAdmin"
+                    ? (await _context.OrderEnterpriseStatuses
+                        .Include(oes => oes.Enterprise)
+                        .Where(oes => oes.OrderId == order.Id)
+                        .Select(oes => new OrderEnterpriseStatusDto
+                        {
+                            Id = oes.Id,
+                            OrderId = oes.OrderId,
+                            EnterpriseId = oes.EnterpriseId,
+                            EnterpriseName = oes.Enterprise != null ? oes.Enterprise.Name : null,
+                            Status = oes.Status,
+                            UpdatedAt = oes.UpdatedAt,
+                            UpdatedBy = oes.UpdatedBy,
+                            Notes = oes.Notes
+                        }).ToListAsync())
+                    : null
             };
 
             return Ok(orderDto);
@@ -580,7 +623,7 @@ namespace GiaLaiOCOP.Api.Controllers
 
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            // 🔹 Phân quyền: Customer chỉ có thể hủy đơn của mình khi EnterpriseAdmin chưa xử lý
+            // 🔹 Phân quyền: Customer chỉ có thể hủy đơn của mình khi đơn hàng còn ở trạng thái Pending
             if (role == "Customer")
             {
                 if (order.UserId != userId.Value)
@@ -590,11 +633,14 @@ namespace GiaLaiOCOP.Api.Controllers
                     return Forbid("Customer chỉ có thể hủy đơn hàng (Cancelled).");
 
                 // Customer chỉ có thể hủy khi đơn hàng vẫn còn ở trạng thái Pending
-                // (EnterpriseAdmin chưa xử lý)
                 if (order.Status != "Pending")
-                    return Forbid("Không thể hủy đơn hàng. Đơn hàng đã được doanh nghiệp xử lý (trạng thái: " + order.Status + ").");
+                    return Forbid("Không thể hủy đơn hàng. Đơn hàng đã được xử lý (trạng thái: " + order.Status + ").");
+
+                order.Status = dto.Status;
+                await _context.SaveChangesAsync();
+                return NoContent();
             }
-            // 🔹 Phân quyền: EnterpriseAdmin chỉ có thể cập nhật đơn hàng có sản phẩm của Enterprise mình
+            // 🔹 EnterpriseAdmin chỉ có thể chấp nhận đơn hàng (Pending → Processing)
             else if (role == "EnterpriseAdmin")
             {
                 var enterpriseId = (await _context.Users.FindAsync(userId.Value))?.EnterpriseId ?? 0;
@@ -603,11 +649,14 @@ namespace GiaLaiOCOP.Api.Controllers
 
                 var hasAccess = order.OrderItems.Any(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId);
                 if (!hasAccess)
-                    return Forbid("Bạn chỉ có thể cập nhật đơn hàng có sản phẩm của doanh nghiệp mình.");
+                    return Forbid("Bạn chỉ có thể chấp nhận đơn hàng có sản phẩm của doanh nghiệp mình.");
 
-                // EnterpriseAdmin không thể set status = "Cancelled" (chỉ Customer mới có thể hủy)
-                if (dto.Status == "Cancelled")
-                    return Forbid("EnterpriseAdmin không thể hủy đơn hàng. Chỉ Customer mới có thể hủy đơn hàng.");
+                // EnterpriseAdmin chỉ có thể chấp nhận đơn hàng (Pending → Processing)
+                if (order.Status != "Pending")
+                    return BadRequest("Chỉ có thể chấp nhận đơn hàng khi đơn hàng ở trạng thái Pending. Trạng thái hiện tại: " + order.Status);
+
+                if (dto.Status != "Processing")
+                    return Forbid("EnterpriseAdmin chỉ có thể chấp nhận đơn hàng (chuyển từ Pending sang Processing). Các trạng thái khác sẽ do SystemAdmin xử lý.");
 
                 // 🔹 Cập nhật trạng thái của enterprise này trong OrderEnterpriseStatus
                 var enterpriseStatus = await _context.OrderEnterpriseStatuses
@@ -620,7 +669,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     {
                         OrderId = id,
                         EnterpriseId = enterpriseId,
-                        Status = dto.Status,
+                        Status = "Processing",
                         UpdatedAt = DateTime.UtcNow,
                         UpdatedBy = userId.Value
                     };
@@ -629,14 +678,14 @@ namespace GiaLaiOCOP.Api.Controllers
                 else
                 {
                     // Cập nhật nếu đã có
-                    enterpriseStatus.Status = dto.Status;
+                    enterpriseStatus.Status = "Processing";
                     enterpriseStatus.UpdatedAt = DateTime.UtcNow;
                     enterpriseStatus.UpdatedBy = userId.Value;
                 }
 
                 await _context.SaveChangesAsync();
 
-                // 🔹 Kiểm tra xem tất cả các enterprise có orderItems trong đơn hàng đã cập nhật trạng thái chưa
+                // 🔹 Kiểm tra xem tất cả các enterprise có orderItems trong đơn hàng đã chấp nhận chưa
                 var allEnterpriseIds = order.OrderItems
                     .Where(oi => oi.Product != null)
                     .Select(oi => oi.Product!.EnterpriseId)
@@ -647,61 +696,133 @@ namespace GiaLaiOCOP.Api.Controllers
                     .Where(oes => oes.OrderId == id && allEnterpriseIds.Contains(oes.EnterpriseId))
                     .ToListAsync();
 
-                // Kiểm tra xem tất cả các enterprise đã cập nhật trạng thái chưa
+                // Kiểm tra xem tất cả các enterprise đã chấp nhận (Processing) chưa
                 var allEnterprisesHaveStatus = allEnterpriseIds.All(eid => 
                     allEnterpriseStatuses.Any(oes => oes.EnterpriseId == eid));
 
                 if (allEnterprisesHaveStatus)
                 {
-                    // Kiểm tra xem tất cả các enterprise đã cập nhật trạng thái giống nhau chưa
-                    var allHaveSameStatus = allEnterpriseStatuses.All(oes => oes.Status == dto.Status);
+                    // Kiểm tra xem tất cả các enterprise đã chấp nhận (Processing) chưa
+                    var allHaveAccepted = allEnterpriseStatuses.All(oes => oes.Status == "Processing");
 
-                    if (allHaveSameStatus)
+                    if (allHaveAccepted)
                     {
-                        // Tất cả các enterprise đã cập nhật cùng trạng thái → Cập nhật trạng thái tổng thể của đơn hàng
-                        order.Status = dto.Status;
+                        // Tất cả các enterprise đã chấp nhận → Cập nhật trạng thái tổng thể của đơn hàng thành Processing
+                        order.Status = "Processing";
                         await _context.SaveChangesAsync();
+
+                        // Tạo notification cho SystemAdmin về việc TẤT CẢ enterprise đã chấp nhận
+                        var systemAdmins = await _context.Users
+                            .Where(u => u.Role == "SystemAdmin")
+                            .ToListAsync();
+
+                        foreach (var admin in systemAdmins)
+                        {
+                            _context.Notifications.Add(new Notification
+                            {
+                                Type = "order_accepted",
+                                Title = $"Đơn hàng #{order.Id} đã được tất cả EnterpriseAdmin chấp nhận",
+                                Message = $"Tất cả EnterpriseAdmin đã chấp nhận đơn hàng #{order.Id}. Bạn có thể gán shipper và cập nhật trạng thái đơn hàng.",
+                                UserId = admin.Id,
+                                OrderId = order.Id,
+                                Link = $"/admin?tab=order-management",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
                     }
                     else
                     {
-                        // Các enterprise có trạng thái khác nhau → Giữ trạng thái "Pending" cho đến khi tất cả cùng trạng thái
-                        // Chỉ cập nhật nếu tất cả đều đã chuyển sang trạng thái tiếp theo (ví dụ: tất cả đều "Processing")
-                        var statuses = allEnterpriseStatuses.Select(oes => oes.Status).Distinct().ToList();
+                        // Có enterprise chưa chấp nhận → Tạo notification cho SystemAdmin về việc enterprise này đã chấp nhận
+                        var enterprise = await _context.Enterprises.FindAsync(enterpriseId);
+                        var enterpriseName = enterprise?.Name ?? $"Enterprise #{enterpriseId}";
                         
-                        // Nếu tất cả đều đã chuyển sang cùng một trạng thái khác "Pending", thì cập nhật
-                        if (statuses.Count == 1 && statuses[0] != "Pending")
+                        var systemAdmins = await _context.Users
+                            .Where(u => u.Role == "SystemAdmin")
+                            .ToListAsync();
+
+                        foreach (var admin in systemAdmins)
                         {
-                            order.Status = statuses[0];
-                            await _context.SaveChangesAsync();
-                        }
-                        else
-                        {
-                            // Vẫn còn enterprise ở trạng thái "Pending" hoặc có nhiều trạng thái khác nhau → Giữ "Pending"
-                            if (order.Status != "Pending")
+                            _context.Notifications.Add(new Notification
                             {
-                                order.Status = "Pending";
-                                await _context.SaveChangesAsync();
-                            }
+                                Type = "order_accepted",
+                                Title = $"Đơn hàng #{order.Id} - {enterpriseName} đã chấp nhận",
+                                Message = $"{enterpriseName} đã chấp nhận đơn hàng #{order.Id}. Đang chờ các doanh nghiệp khác chấp nhận.",
+                                UserId = admin.Id,
+                                OrderId = order.Id,
+                                Link = $"/admin?tab=order-management",
+                                CreatedAt = DateTime.UtcNow
+                            });
                         }
                     }
                 }
                 else
                 {
-                    // Chưa tất cả enterprise đã cập nhật → Giữ trạng thái "Pending"
-                    if (order.Status != "Pending")
+                    // Chưa tất cả enterprise đã cập nhật → Tạo notification cho SystemAdmin về việc enterprise này đã chấp nhận
+                    var enterprise = await _context.Enterprises.FindAsync(enterpriseId);
+                    var enterpriseName = enterprise?.Name ?? $"Enterprise #{enterpriseId}";
+                    
+                    var systemAdmins = await _context.Users
+                        .Where(u => u.Role == "SystemAdmin")
+                        .ToListAsync();
+
+                    foreach (var admin in systemAdmins)
                     {
-                        order.Status = "Pending";
-                        await _context.SaveChangesAsync();
+                        _context.Notifications.Add(new Notification
+                        {
+                            Type = "order_accepted",
+                            Title = $"Đơn hàng #{order.Id} - {enterpriseName} đã chấp nhận",
+                            Message = $"{enterpriseName} đã chấp nhận đơn hàng #{order.Id}. Đang chờ các doanh nghiệp khác chấp nhận.",
+                            UserId = admin.Id,
+                            OrderId = order.Id,
+                            Link = $"/admin?tab=order-management",
+                            CreatedAt = DateTime.UtcNow
+                        });
                     }
                 }
 
+                await _context.SaveChangesAsync();
                 return NoContent();
             }
-            // SystemAdmin có thể cập nhật bất kỳ status nào (cập nhật trực tiếp trạng thái tổng thể)
+            // 🔹 SystemAdmin có quyền cập nhật bất kỳ status nào (cập nhật trực tiếp trạng thái tổng thể)
             else if (role == "SystemAdmin")
             {
+                var oldStatus = order.Status;
                 order.Status = dto.Status;
                 await _context.SaveChangesAsync();
+
+                // Tạo notification cho EnterpriseAdmin khi SystemAdmin cập nhật trạng thái từ Processing → Shipped
+                if (oldStatus == "Processing" && dto.Status == "Shipped")
+                {
+                    var enterpriseIds = order.OrderItems
+                        .Where(oi => oi.Product != null)
+                        .Select(oi => oi.Product!.EnterpriseId)
+                        .Distinct()
+                        .ToList();
+
+                    foreach (var enterpriseId in enterpriseIds)
+                    {
+                        var enterpriseAdmin = await _context.Users
+                            .FirstOrDefaultAsync(u => u.EnterpriseId == enterpriseId && u.Role == "EnterpriseAdmin");
+
+                        if (enterpriseAdmin != null)
+                        {
+                            _context.Notifications.Add(new Notification
+                            {
+                                Type = "order_shipped",
+                                Title = $"Đơn hàng #{order.Id} đã được giao",
+                                Message = $"SystemAdmin đã cập nhật trạng thái đơn hàng #{order.Id} thành \"Đang giao\". Bạn có thể gửi yêu cầu xác nhận hoàn thành khi đã giao xong.",
+                                UserId = enterpriseAdmin.Id,
+                                EnterpriseId = enterpriseId,
+                                OrderId = order.Id,
+                                Link = $"/enterprise-admin?tab=orders",
+                                CreatedAt = DateTime.UtcNow
+                            });
+                        }
+                    }
+
+                    await _context.SaveChangesAsync();
+                }
+
                 return NoContent();
             }
 
@@ -778,7 +899,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 }
             }
 
-            var orderDto = MapOrderToDto(order, entIdForDto);
+            var orderDto = await MapOrderToDtoAsync(order, entIdForDto, currentRole);
             return Ok(orderDto);
         }
 
@@ -853,7 +974,7 @@ namespace GiaLaiOCOP.Api.Controllers
                         {
                             Type = "bank_transfer_confirmed",
                             Title = $"Đã xác nhận chuyển khoản cho đơn hàng #{order.Id}",
-                            Message = $"SystemAdmin đã xác nhận đã nhận được chuyển khoản cho đơn hàng #{order.Id}. Bạn có thể tiếp tục xử lý đơn hàng.",
+                            Message = $"SystemAdmin đã xác nhận đã nhận được chuyển khoản cho đơn hàng #{order.Id}. SystemAdmin sẽ tiếp tục xử lý đơn hàng.",
                             UserId = enterpriseAdmin.Id,
                             EnterpriseId = enterpriseId,
                             OrderId = order.Id,
@@ -938,7 +1059,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 await _context.Entry(payment).Reference(p => p.Enterprise).LoadAsync();
             }
 
-            var orderDto = MapOrderToDto(order);
+            var currentRole = User.FindFirst(ClaimTypes.Role)?.Value;
+            var orderDto = await MapOrderToDtoAsync(order, null, currentRole);
             return Ok(orderDto);
         }
 
@@ -1025,16 +1147,24 @@ namespace GiaLaiOCOP.Api.Controllers
 
                 foreach (var entId in enterpriseIds)
                 {
-                    _context.Notifications.Add(new Notification
+                    // Tìm EnterpriseAdmin để gửi notification
+                    var enterpriseAdmin = await _context.Users
+                        .FirstOrDefaultAsync(u => u.EnterpriseId == entId && u.Role == "EnterpriseAdmin");
+
+                    if (enterpriseAdmin != null)
                     {
-                        Type = "order_completion_approved",
-                        Title = $"Đơn hàng #{order.Id} đã được xác nhận hoàn thành",
-                        Message = $"Đơn hàng #{order.Id} đã được SystemAdmin xác nhận hoàn thành.",
-                        EnterpriseId = entId,
-                        OrderId = order.Id,
-                        Link = $"/orders/{order.Id}",
-                        CreatedAt = DateTime.UtcNow
-                    });
+                        _context.Notifications.Add(new Notification
+                        {
+                            Type = "order_completion_approved",
+                            Title = $"Đơn hàng #{order.Id} đã được xác nhận hoàn thành",
+                            Message = $"Đơn hàng #{order.Id} đã được SystemAdmin xác nhận hoàn thành.",
+                            UserId = enterpriseAdmin.Id,
+                            EnterpriseId = entId,
+                            OrderId = order.Id,
+                            Link = $"/enterprise-admin?tab=orders",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
                 }
             }
             else
@@ -1102,7 +1232,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 }
             }
 
-            var orderDto = MapOrderToDto(order, enterpriseId);
+            var orderDto = await MapOrderToDtoAsync(order, enterpriseId, currentRole);
             return Ok(orderDto);
         }
 
@@ -1159,7 +1289,8 @@ namespace GiaLaiOCOP.Api.Controllers
 
         // 🔹 Helper method để map Order sang OrderDto
         // enterpriseId: Nếu có, chỉ trả về orderItems thuộc enterprise này (cho EnterpriseAdmin)
-        private OrderDto MapOrderToDto(Order order, int? enterpriseId = null)
+        // role: Role của user hiện tại (để quyết định có trả về EnterpriseStatuses không)
+        private Task<OrderDto> MapOrderToDtoAsync(Order order, int? enterpriseId = null, string? role = null)
         {
             // 🔹 Lấy địa chỉ từ ShippingAddressDetail hoặc ShippingAddress (string)
             string? shippingAddress = null;
@@ -1181,7 +1312,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 orderItemsToReturn = order.OrderItems.Where(oi => oi.Product != null && oi.Product.EnterpriseId == enterpriseId.Value);
             }
 
-            return new OrderDto
+            var orderDto = new OrderDto
             {
                 Id = order.Id,
                 UserId = order.UserId,
@@ -1224,8 +1355,10 @@ namespace GiaLaiOCOP.Api.Controllers
                     ProductName = oi.Product?.Name,
                     ProductImageUrl = oi.Product?.ImageUrl
                 }).ToList(),
-                Payments = order.Payments.Select(MapPaymentToDto).ToList()
+                Payments = order.Payments.Select(MapPaymentToDto).ToList(),
+                EnterpriseStatuses = null // Sẽ được set trong GetOrders và GetOrder
             };
+            return Task.FromResult(orderDto);
         }
 
         // 🔹 PUT /api/orders/{id}/shipping-address - Cập nhật địa chỉ giao hàng
@@ -1410,7 +1543,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 {
                     Type = "new_order",
                     Title = $"Đơn hàng mới #{orderId}",
-                    Message = $"Bạn có đơn hàng mới với {productCount} sản phẩm: {productList}. Vui lòng xác nhận đơn hàng.",
+                    Message = $"Bạn có đơn hàng mới với {productCount} sản phẩm: {productList}. Vui lòng chấp nhận đơn hàng để SystemAdmin có thể tiếp tục xử lý.",
                     EnterpriseId = enterpriseId,
                     UserId = enterpriseAdmin?.Id, // Gửi cho EnterpriseAdmin cụ thể nếu có
                     OrderId = orderId,
