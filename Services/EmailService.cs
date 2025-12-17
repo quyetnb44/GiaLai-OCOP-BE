@@ -1,6 +1,5 @@
-using MailKit.Net.Smtp;
-using MailKit.Security;
-using MimeKit;
+using SendGrid;
+using SendGrid.Helpers.Mail;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -26,30 +25,25 @@ namespace GiaLaiOCOP.Api.Services
         {
             try
             {
-                var smtpHost = _configuration["Email:SmtpHost"];
-                var smtpPort = int.Parse(_configuration["Email:SmtpPort"] ?? "587");
-                var smtpUsername = _configuration["Email:SmtpUsername"];
-                var smtpPassword = _configuration["Email:SmtpPassword"];
-                var fromEmail = _configuration["Email:FromEmail"] ?? smtpUsername;
+                var apiKey = _configuration["Email:SendGridApiKey"];
+                var fromEmail = _configuration["Email:FromEmail"];
                 var fromName = _configuration["Email:FromName"] ?? "GiaLai OCOP";
 
-                if (string.IsNullOrEmpty(smtpHost) || string.IsNullOrEmpty(smtpUsername) || string.IsNullOrEmpty(smtpPassword))
+                if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(fromEmail))
                 {
                     _logger.LogError("❌ Email configuration is missing! Please configure Email settings in appsettings.json");
-                    _logger.LogError("Required: Email:SmtpHost, Email:SmtpUsername, Email:SmtpPassword");
+                    _logger.LogError("Required: Email:SendGridApiKey, Email:FromEmail");
                     return false;
                 }
 
                 // Kiểm tra nếu đang dùng placeholder
-                if (smtpUsername.Contains("your-email") || smtpPassword.Contains("your-app-password"))
+                if (apiKey.Contains("your-api-key") || fromEmail.Contains("your-email"))
                 {
-                    _logger.LogError("❌ Email configuration is using placeholder values! Please update with real Gmail credentials.");
+                    _logger.LogError("❌ Email configuration is using placeholder values! Please update with real SendGrid credentials.");
                     return false;
                 }
 
-                var message = new MimeMessage();
-                message.From.Add(new MailboxAddress(fromName, fromEmail));
-                message.To.Add(new MailboxAddress("", toEmail));
+                var client = new SendGridClient(apiKey);
 
                 // Subject và body tùy theo purpose
                 string subject, body;
@@ -91,27 +85,27 @@ namespace GiaLaiOCOP.Api.Services
                         break;
                 }
 
-                message.Subject = subject;
-                message.Body = new TextPart("html")
+                var msg = new SendGridMessage()
                 {
-                    Text = body
+                    From = new EmailAddress(fromEmail, fromName),
+                    Subject = subject,
+                    HtmlContent = body
                 };
+                msg.AddTo(new EmailAddress(toEmail));
 
-                using (var client = new SmtpClient())
+                var response = await client.SendEmailAsync(msg);
+
+                if (response.IsSuccessStatusCode)
                 {
-                    // Hỗ trợ cả port 587 (StartTls) và 465 (SSL)
-                    SecureSocketOptions socketOptions = smtpPort == 465 
-                        ? SecureSocketOptions.SslOnConnect 
-                        : SecureSocketOptions.StartTls;
-
-                    await client.ConnectAsync(smtpHost, smtpPort, socketOptions);
-                    await client.AuthenticateAsync(smtpUsername, smtpPassword);
-                    await client.SendAsync(message);
-                    await client.DisconnectAsync(true);
+                    _logger.LogInformation($"OTP email sent successfully to {toEmail} from {fromEmail}, API KEY: {apiKey}");
+                    return true;
                 }
-
-                _logger.LogInformation($"OTP email sent successfully to {toEmail}");
-                return true;
+                else
+                {
+                    var responseBody = await response.Body.ReadAsStringAsync();
+                    _logger.LogError($"Failed to send OTP email to {toEmail}. Status: {response.StatusCode}, Body: {responseBody}");
+                    return false;
+                }
             }
             catch (Exception ex)
             {
