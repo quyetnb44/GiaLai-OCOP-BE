@@ -36,6 +36,7 @@ namespace GiaLaiOCOP.Api.Data
         public DbSet<WalletRequest> WalletRequests { get; set; }
         public DbSet<BankAccount> BankAccounts { get; set; }
         public DbSet<OrderEnterpriseStatus> OrderEnterpriseStatuses { get; set; }
+        public DbSet<ShippingRule> ShippingRules { get; set; }
 
 
 
@@ -346,6 +347,20 @@ namespace GiaLaiOCOP.Api.Data
             modelBuilder.Entity<OrderEnterpriseStatus>()
                 .HasIndex(oes => new { oes.OrderId, oes.EnterpriseId })
                 .IsUnique();
+
+            // 🟩 Cấu hình ShippingRule
+            modelBuilder.Entity<ShippingRule>()
+                .Property(sr => sr.ShippingFee)
+                .HasColumnType("decimal(18,2)");
+
+            modelBuilder.Entity<ShippingRule>()
+                .HasIndex(sr => sr.ZoneType)
+                .IsUnique();
+
+            // 🟩 Cấu hình decimal cho Order.ShippingFee
+            modelBuilder.Entity<Order>()
+                .Property(o => o.ShippingFee)
+                .HasColumnType("decimal(18,2)");
         }
     }
 }

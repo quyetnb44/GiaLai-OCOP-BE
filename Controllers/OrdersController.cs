@@ -22,15 +22,18 @@ namespace GiaLaiOCOP.Api.Controllers
         private readonly AppDbContext _context;
         private readonly IOptions<BankTransferSettings> _bankOptions;
         private readonly IWalletService _walletService;
+        private readonly IShippingService _shippingService;
 
         public OrdersController(
             AppDbContext context, 
             IOptions<BankTransferSettings> bankOptions,
-            IWalletService walletService)
+            IWalletService walletService,
+            IShippingService shippingService)
         {
             _context = context;
             _bankOptions = bankOptions;
             _walletService = walletService;
+            _shippingService = shippingService;
         }
 
         // Helper method để lấy userId từ token
@@ -195,6 +198,8 @@ namespace GiaLaiOCOP.Api.Controllers
                     PaymentStatus = o.PaymentStatus,
                     PaymentReference = o.PaymentReference,
                     BankTransferRejectionReason = o.BankTransferRejectionReason,
+                    ShippingFee = o.ShippingFee,
+                    ShippingZoneType = o.ShippingZoneType,
                     ShipperId = o.ShipperId,
                     ShippedAt = o.ShippedAt,
                     DeliveredAt = o.DeliveredAt,
@@ -344,15 +349,17 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
                 BankTransferRejectionReason = order.BankTransferRejectionReason,
+                ShippingFee = order.ShippingFee,
+                ShippingZoneType = order.ShippingZoneType,
                 ShipperId = order.ShipperId,
-                    ShippedAt = order.ShippedAt,
-                    DeliveredAt = order.DeliveredAt,
-                    DeliveryNotes = order.DeliveryNotes,
-                    CompletionRequestedAt = order.CompletionRequestedAt,
-                    CompletionApprovedAt = order.CompletionApprovedAt,
-                    CompletionRejectedAt = order.CompletionRejectedAt,
-                    CompletionRejectionReason = order.CompletionRejectionReason,
-                    // 🔹 Thêm thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
+                ShippedAt = order.ShippedAt,
+                DeliveredAt = order.DeliveredAt,
+                DeliveryNotes = order.DeliveryNotes,
+                CompletionRequestedAt = order.CompletionRequestedAt,
+                CompletionApprovedAt = order.CompletionApprovedAt,
+                CompletionRejectedAt = order.CompletionRejectedAt,
+                CompletionRejectionReason = order.CompletionRejectionReason,
+                // 🔹 Thêm thông tin Customer (để EnterpriseAdmin xem thông tin người đặt hàng)
                     Customer = order.User != null ? new CustomerInfoDto
                 {
                     Id = order.User.Id,
@@ -469,6 +476,35 @@ namespace GiaLaiOCOP.Api.Controllers
                 total += product.Price * item.Quantity;
             }
 
+            // 🔹 Tính phí vận chuyển dựa trên địa chỉ người mua
+            decimal shippingFee = 0;
+            string? shippingZoneType = null;
+            
+            // Lấy tỉnh/thành phố từ ShippingAddress
+            string? buyerProvince = null;
+            if (dto.ShippingAddressId.HasValue)
+            {
+                var shippingAddr = await _context.ShippingAddresses
+                    .FirstOrDefaultAsync(sa => sa.Id == dto.ShippingAddressId.Value);
+                buyerProvince = shippingAddr?.Province;
+            }
+            else if (!string.IsNullOrEmpty(dto.ShippingAddress))
+            {
+                // Cố gắng extract tỉnh từ string địa chỉ (phần cuối cùng sau dấu phẩy)
+                var parts = dto.ShippingAddress.Split(',');
+                if (parts.Length > 0)
+                {
+                    buyerProvince = parts[^1].Trim();
+                }
+            }
+
+            if (!string.IsNullOrEmpty(buyerProvince))
+            {
+                var (fee, zoneType, _) = await _shippingService.CalculateShippingFeeAsync(buyerProvince);
+                shippingFee = fee;
+                shippingZoneType = zoneType;
+            }
+
             var order = new Order
             {
                 UserId = userId.Value,
@@ -477,7 +513,9 @@ namespace GiaLaiOCOP.Api.Controllers
                 OrderDate = DateTime.UtcNow,
                 Status = "Pending",
                 PaymentMethod = paymentMethod,
-                PaymentStatus = paymentMethod == "BankTransfer" ? "AwaitingTransfer" : "Pending" // BankTransfer cần xét duyệt, COD là Pending
+                PaymentStatus = paymentMethod == "BankTransfer" ? "AwaitingTransfer" : "Pending", // BankTransfer cần xét duyệt, COD là Pending
+                ShippingFee = shippingFee,
+                ShippingZoneType = shippingZoneType
             };
 
             await using var transaction = await _context.Database.BeginTransactionAsync();
@@ -492,7 +530,7 @@ namespace GiaLaiOCOP.Api.Controllers
                     _context.OrderItems.Add(orderItem);
                 }
 
-                order.TotalAmount = total;
+                order.TotalAmount = total + shippingFee; // 🔹 Tổng tiền = tiền hàng + phí ship
                 await _context.SaveChangesAsync();
 
                 // 🔹 Tạo OrderEnterpriseStatus cho mỗi enterprise có sản phẩm trong đơn hàng
@@ -555,6 +593,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
                 BankTransferRejectionReason = order.BankTransferRejectionReason,
+                ShippingFee = order.ShippingFee,
+                ShippingZoneType = order.ShippingZoneType,
                 ShipperId = order.ShipperId,
                 ShippedAt = order.ShippedAt,
                 DeliveredAt = order.DeliveredAt,
@@ -1325,6 +1365,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 PaymentStatus = order.PaymentStatus,
                 PaymentReference = order.PaymentReference,
                 BankTransferRejectionReason = order.BankTransferRejectionReason,
+                ShippingFee = order.ShippingFee,
+                ShippingZoneType = order.ShippingZoneType,
                 ShipperId = order.ShipperId,
                 ShippedAt = order.ShippedAt,
                 DeliveredAt = order.DeliveredAt,
