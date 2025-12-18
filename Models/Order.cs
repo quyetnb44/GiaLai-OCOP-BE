@@ -42,6 +42,10 @@ namespace GiaLaiOCOP.Api.Models
         public string? PaymentReference { get; set; }
         public string? BankTransferRejectionReason { get; set; } // Lý do từ chối chuyển khoản
 
+        // 🔹 Phí vận chuyển
+        public decimal ShippingFee { get; set; } = 0; // Phí ship (VND)
+        public string? ShippingZoneType { get; set; } // SameProvince, SameRegion, DifferentRegion
+
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
 
         [JsonIgnore]

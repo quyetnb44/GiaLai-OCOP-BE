@@ -186,6 +186,9 @@ builder.Services.AddScoped<IVietQRPaymentService, VietQRPaymentService>();
 builder.Services.AddScoped<IWalletRequestService, WalletRequestService>();
 builder.Services.AddScoped<IBankAccountService, BankAccountService>();
 
+// 🔹 Shipping service
+builder.Services.AddScoped<IShippingService, ShippingService>();
+
 // 🔹 Add Health Checks
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("database");

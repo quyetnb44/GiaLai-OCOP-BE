@@ -17,6 +17,10 @@ namespace GiaLaiOCOP.Api.Dtos
         public string? PaymentReference { get; set; }
         public string? BankTransferRejectionReason { get; set; } // Lý do từ chối chuyển khoản
 
+        // 🔹 Phí vận chuyển
+        public decimal ShippingFee { get; set; } // Phí ship (VND)
+        public string? ShippingZoneType { get; set; } // SameProvince, SameRegion, DifferentRegion
+
         // 🔹 Thông tin giao hàng
         public int? ShipperId { get; set; }
         public DateTime? ShippedAt { get; set; }
