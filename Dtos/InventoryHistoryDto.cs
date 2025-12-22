@@ -11,9 +11,9 @@ namespace GiaLaiOCOP.Api.Dtos
         public int EnterpriseId { get; set; }
         public string EnterpriseName { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
-        public int Quantity { get; set; }
-        public int PreviousQuantity { get; set; }
-        public int NewQuantity { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal PreviousQuantity { get; set; }
+        public decimal NewQuantity { get; set; }
         public string? Reason { get; set; }
         public DateTime CreatedAt { get; set; }
         public int? CreatedByUserId { get; set; }
@@ -29,11 +29,11 @@ namespace GiaLaiOCOP.Api.Dtos
         [RegularExpression("^(import|export|adjustment)$", ErrorMessage = "Type chỉ chấp nhận: import, export, adjustment.")]
         public string Type { get; set; } = "adjustment";
 
-        [Range(-1000000, 1000000)]
-        public int Quantity { get; set; }
+        [Range(-1000000.0, 1000000.0)]
+        public decimal Quantity { get; set; }
 
         public string? Reason { get; set; }
-        public int LowStockThreshold { get; set; } = 10;
+        public decimal LowStockThreshold { get; set; } = 10;
     }
 }
 

@@ -13,7 +13,8 @@ namespace GiaLaiOCOP.Api.Models
         public string? ImageUrl { get; set; }                          // Ảnh sản phẩm
         public int? OCOPRating { get; set; }                           // Xếp hạng OCOP (3-5 sao)
         public string StockStatus { get; set; } = "InStock";           // Tình trạng: "InStock" (còn hàng) / "OutOfStock" (hết hàng)
-        public int StockQuantity { get; set; } = 0;                    // Số lượng tồn kho
+        public decimal StockQuantity { get; set; } = 0;                // Số lượng tồn kho
+        public string Unit { get; set; } = "cái";                      // 🔹 Đơn vị đo lường (kg, lít, hộp...)
         public string Status { get; set; } = "PendingApproval";        // PendingApproval, Approved, Rejected
         public int? ApprovedByUserId { get; set; }
         public DateTime? ApprovedAt { get; set; }

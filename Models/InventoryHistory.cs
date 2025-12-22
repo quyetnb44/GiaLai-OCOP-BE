@@ -10,9 +10,9 @@ namespace GiaLaiOCOP.Api.Models
         public int EnterpriseId { get; set; }
         public Enterprise Enterprise { get; set; } = null!;
         public string Type { get; set; } = string.Empty; // import, export, adjustment
-        public int Quantity { get; set; } // Change amount (can be negative)
-        public int PreviousQuantity { get; set; }
-        public int NewQuantity { get; set; }
+        public decimal Quantity { get; set; } // Change amount (can be negative)
+        public decimal PreviousQuantity { get; set; }
+        public decimal NewQuantity { get; set; }
         public string? Reason { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public int? CreatedByUserId { get; set; }

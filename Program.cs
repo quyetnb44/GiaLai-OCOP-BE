@@ -189,6 +189,12 @@ builder.Services.AddScoped<IBankAccountService, BankAccountService>();
 // 🔹 Shipping service
 builder.Services.AddScoped<IShippingService, ShippingService>();
 
+// 🔹 Revenue Statistics services
+builder.Services.AddScoped<GiaLaiOCOP.Api.Services.IRevenueAuthorizationService, GiaLaiOCOP.Api.Services.RevenueAuthorizationService>();
+builder.Services.AddScoped<GiaLaiOCOP.Api.Services.Revenue.IRevenueCalculationService, GiaLaiOCOP.Api.Services.Revenue.RevenueCalculationService>();
+builder.Services.AddSingleton<GiaLaiOCOP.Api.Services.Revenue.TimePeriodStrategyFactory>();
+builder.Services.AddScoped<GiaLaiOCOP.Api.Services.Revenue.IRevenueStatisticsService, GiaLaiOCOP.Api.Services.Revenue.RevenueStatisticsService>();
+
 // 🔹 Add Health Checks
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("database");

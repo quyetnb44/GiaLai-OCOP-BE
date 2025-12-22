@@ -16,7 +16,7 @@ namespace GiaLaiOCOP.Api.Models
         [JsonIgnore] // 🔥 Nếu Product có liên kết ngược đến OrderItem thì cũng nên bỏ qua
         public Product Product { get; set; } = null!;
 
-        public int Quantity { get; set; }
+        public decimal Quantity { get; set; }
 
         public decimal Price { get; set; } // Giá tại thời điểm đặt
     }

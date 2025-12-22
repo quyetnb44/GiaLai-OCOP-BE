@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 
 namespace GiaLaiOCOP.Api.Middleware
 {
@@ -28,10 +29,11 @@ namespace GiaLaiOCOP.Api.Middleware
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+        private Task HandleExceptionAsync(HttpContext context, Exception exception)
         {
             var code = HttpStatusCode.InternalServerError; // 500 if unexpected
             var result = string.Empty;
+            var isDevelopment = context.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment();
 
             switch (exception)
             {
@@ -54,11 +56,34 @@ namespace GiaLaiOCOP.Api.Middleware
                     break;
                 default:
                     // Log full exception details for internal server errors
-                    result = JsonSerializer.Serialize(new 
-                    { 
-                        error = "Internal Server Error", 
-                        message = "An error occurred while processing your request." 
-                    });
+                    _logger.LogError(exception, "Unhandled exception: {ExceptionType} - {Message}\n{StackTrace}", 
+                        exception.GetType().Name, exception.Message, exception.StackTrace);
+                    
+                    // In development, return more details. In production, return generic message
+                    if (isDevelopment)
+                    {
+                        result = JsonSerializer.Serialize(new 
+                        { 
+                            error = "Internal Server Error", 
+                            message = exception.Message,
+                            type = exception.GetType().Name,
+                            stackTrace = exception.StackTrace,
+                            innerException = exception.InnerException != null ? new
+                            {
+                                message = exception.InnerException.Message,
+                                type = exception.InnerException.GetType().Name
+                            } : null
+                        });
+                    }
+                    else
+                    {
+                        result = JsonSerializer.Serialize(new 
+                        { 
+                            error = "Internal Server Error", 
+                            message = "An error occurred while processing your request.",
+                            details = exception.Message // Include message but not stack trace in production
+                        });
+                    }
                     break;
             }
 

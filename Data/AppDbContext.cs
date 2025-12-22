@@ -62,6 +62,12 @@ namespace GiaLaiOCOP.Api.Data
             modelBuilder.Entity<Order>()
                 .HasKey(o => o.Id);
 
+            // 🔹 Index cho Revenue Statistics queries (tối ưu performance)
+            // Index composite trên (OrderDate, Status) để tăng tốc query thống kê doanh thu
+            modelBuilder.Entity<Order>()
+                .HasIndex(o => new { o.OrderDate, o.Status })
+                .HasDatabaseName("IX_Orders_OrderDate_Status");
+
             modelBuilder.Entity<OrderItem>()
                 .HasKey(i => i.Id);
 
