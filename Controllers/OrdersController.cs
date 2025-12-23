@@ -462,8 +462,8 @@ namespace GiaLaiOCOP.Api.Controllers
                 if (product.Status != "Approved")
                     return BadRequest($"Sản phẩm '{product.Name}' (ID: {item.ProductId}) chưa được duyệt.");
 
-                if (product.StockStatus == "OutOfStock")
-                    return BadRequest($"Sản phẩm '{product.Name}' (ID: {item.ProductId}) đã hết hàng.");
+                if (product.StockStatus == "OutOfStock" || product.StockQuantity < item.Quantity)
+                    return BadRequest($"Sản phẩm '{product.Name}' (ID: {item.ProductId}) không đủ hàng. Tồn kho: {product.StockQuantity}.");
 
                 var orderItem = new OrderItem
                 {
@@ -528,6 +528,20 @@ namespace GiaLaiOCOP.Api.Controllers
                 {
                     orderItem.OrderId = order.Id;
                     _context.OrderItems.Add(orderItem);
+
+                    // 🔹 Deduct Stock & Update Status
+                    if (products.TryGetValue(orderItem.ProductId, out var product))
+                    {
+                        product.StockQuantity -= orderItem.Quantity;
+                        
+                        // Update StockStatus
+                        if (product.StockQuantity <= 0) 
+                            product.StockStatus = "OutOfStock";
+                        else if (product.StockQuantity <= 10) 
+                            product.StockStatus = "LowStock";
+                        else 
+                            product.StockStatus = "InStock";
+                    }
                 }
 
                 order.TotalAmount = total + shippingFee; // 🔹 Tổng tiền = tiền hàng + phí ship

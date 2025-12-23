@@ -122,7 +122,9 @@ namespace GiaLaiOCOP.Api.Data
                     ImageUrl = "https://example.com/images/cafe-hat.jpg",
                     CreatedAt = DateTime.UtcNow,
                     Status = "Approved",
-                    ApprovedAt = DateTime.UtcNow
+                    ApprovedAt = DateTime.UtcNow,
+                    Unit = "kg", // 🔹 Cà phê hạt/xay tính theo kg
+                    StockQuantity = 100
                 },
                 new Product
                 {
@@ -135,11 +137,52 @@ namespace GiaLaiOCOP.Api.Data
                     ImageUrl = "https://example.com/images/cafe-phin.jpg",
                     CreatedAt = DateTime.UtcNow,
                     Status = "Approved",
-                    ApprovedAt = DateTime.UtcNow
+                    ApprovedAt = DateTime.UtcNow,
+                    Unit = "hộp", // Cafe phin thì tính theo hộp
+                    StockQuantity = 50
                 }
             };
 
             context.Products.AddRange(products);
+            context.SaveChanges();
+
+            // Thêm sản phẩm Mật ong cho "HTX Mật ong rừng Tây Nguyên" (index 2)
+            var honeyEnterprise = enterprises[2];
+            var honeyProducts = new List<Product>
+            {
+                new Product
+                {
+                    Name = "Mật ong rừng nguyên chất",
+                    Description = "Mật ong rừng già khai thác tự nhiên, đậm đặc",
+                    Price = 250000,
+                    EnterpriseId = honeyEnterprise.Id,
+                    OCOPRating = 5,
+                    StockStatus = "InStock",
+                    ImageUrl = "https://example.com/images/mat-ong.jpg",
+                    CreatedAt = DateTime.UtcNow,
+                    Status = "Approved",
+                    ApprovedAt = DateTime.UtcNow,
+                    Unit = "lít", // 🔹 Đơn vị lít
+                    StockQuantity = 100 // Tồn kho mẫu
+                },
+                 new Product
+                {
+                    Name = "Mật ong hoa cà phê",
+                    Description = "Mật ong nuôi hút phấn hoa cà phê, thơm nhẹ",
+                    Price = 120000,
+                    EnterpriseId = honeyEnterprise.Id,
+                    OCOPRating = 4,
+                    StockStatus = "InStock",
+                    ImageUrl = "https://example.com/images/mat-ong-cafe.jpg", // Ảnh minh họa
+                    CreatedAt = DateTime.UtcNow,
+                    Status = "Approved",
+                    ApprovedAt = DateTime.UtcNow,
+                    Unit = "lít", // 🔹 Đơn vị lít
+                    StockQuantity = 200
+                }
+            };
+
+            context.Products.AddRange(honeyProducts);
             context.SaveChanges();
 
             Console.WriteLine($"✅ Đã seed {enterprises.Count} doanh nghiệp và {products.Count} sản phẩm mẫu cho Map.");

@@ -153,9 +153,9 @@ namespace GiaLaiOCOP.Api.Controllers
             return Ok(MapHistoryToDto(history));
         }
 
-        private static string CalculateStockStatus(int quantity, int threshold)
+        private static string CalculateStockStatus(decimal quantity, decimal threshold)
         {
-            if (quantity == 0)
+            if (quantity <= 0)
                 return "OutOfStock";
 
             if (quantity <= threshold)
@@ -164,7 +164,7 @@ namespace GiaLaiOCOP.Api.Controllers
             return "InStock";
         }
 
-        private async Task CreateLowStockNotificationAsync(Product product, int quantity)
+        private async Task CreateLowStockNotificationAsync(Product product, decimal quantity)
         {
             _context.Notifications.Add(new Notification
             {

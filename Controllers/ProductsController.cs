@@ -160,6 +160,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 OCOPRating = dto.OCOPRating,
                 StockStatus = dto.StockStatus ?? "InStock",
                 StockQuantity = dto.StockQuantity ?? 0,
+                Unit = dto.Unit ?? "cái", // 🔹 Map Unit
                 CategoryId = dto.CategoryId,
                 Status = "PendingApproval",
                 ApprovedAt = null,
@@ -216,6 +217,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 product.StockStatus = dto.StockStatus ?? product.StockStatus;
                 if (dto.StockQuantity.HasValue)
                     product.StockQuantity = dto.StockQuantity.Value;
+                product.Unit = dto.Unit ?? product.Unit; // 🔹 Update Unit
                 product.CategoryId = dto.CategoryId;
                 product.Status = "PendingApproval";
                 product.ApprovedAt = null;
@@ -239,6 +241,8 @@ namespace GiaLaiOCOP.Api.Controllers
                     product.StockStatus = dto.StockStatus;
                 if (dto.StockQuantity.HasValue)
                     product.StockQuantity = dto.StockQuantity.Value;
+                if (!string.IsNullOrWhiteSpace(dto.Unit)) // 🔹 Update Unit if provided
+                    product.Unit = dto.Unit;
                 if (dto.CategoryId.HasValue)
                 {
                     var category = await _context.Categories
@@ -404,6 +408,7 @@ namespace GiaLaiOCOP.Api.Controllers
                 AverageRating = product.AverageRating, // 🔹 Lấy từ database
                 Status = product.Status,
                 StockQuantity = product.StockQuantity,
+                Unit = product.Unit, // 🔹 Map Unit
                 CategoryId = product.CategoryId,
                 CategoryName = product.Category?.Name,
                 ApprovedAt = product.ApprovedAt,
@@ -444,7 +449,9 @@ namespace GiaLaiOCOP.Api.Controllers
         public string? StockStatus { get; set; } // "InStock" or "OutOfStock"
         public int? CategoryId { get; set; }
         [Range(0, int.MaxValue, ErrorMessage = "Số lượng tồn kho phải lớn hơn hoặc bằng 0.")]
-        public int? StockQuantity { get; set; }
+        public decimal? StockQuantity { get; set; } // Changed to decimal? to match Product model
+        
+        public string? Unit { get; set; } // 🔹 Add Unit
     }
 
     public class UpdateProductImageDto
